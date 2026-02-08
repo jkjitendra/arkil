@@ -4,7 +4,9 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -69,6 +71,24 @@ public class ClientAuthPolicy {
      */
     @Column(columnDefinition = "TEXT")
     private String themeConfig;
+
+    /**
+     * Allowed origins for CORS (per-project).
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "client_allowed_origins", joinColumns = @JoinColumn(name = "policy_id"))
+    @Column(name = "origin")
+    @Builder.Default
+    private List<String> allowedOrigins = new ArrayList<>();
+
+    /**
+     * Allowed redirect URIs for OAuth flows.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "client_redirect_uris", joinColumns = @JoinColumn(name = "policy_id"))
+    @Column(name = "redirect_uri")
+    @Builder.Default
+    private List<String> redirectUris = new ArrayList<>();
 
     /**
      * Version for optimistic locking (ETag support).
