@@ -39,6 +39,27 @@ arkil-server/
     └── AuthController.java   # Unified Entry Point (Provider Agnostic)
 ```
 
+## Architecture Overview
+```
+┌───────────────────────────────────────────────────────────────────┐
+│                        ARKIL AUTH SERVER                          │
+├───────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                │
+│  │ UI Layer    │  │ Endpoint    │  │ Provider    │  ← 3 Layers    │
+│  │ (Thymeleaf) │  │ Guards      │  │ Guards      │    of          │
+│  │ Hide        │  │ Block 403   │  │ Reject auth │    Enforcement │
+│  └─────────────┘  └─────────────┘  └─────────────┘                │
+├───────────────────────────────────────────────────────────────────┤
+│  Available Auth Modules:                                          │
+│  • EMAIL_PASSWORD  - Username/password login                      │
+│  • OAUTH2_GOOGLE   - "Sign in with Google"                        │
+│  • OAUTH2_GITHUB   - "Sign in with GitHub"                        │
+│  • OAUTH2_APPLE    - "Sign in with Apple"                         │
+│  • PASSKEY         - WebAuthn/Fingerprint                         │
+│  • TOTP            - Authenticator app codes                      │
+└───────────────────────────────────────────────────────────────────┘
+```
+
 ## 🛠️ Core Capabilities
 1. Configurable Claims Engine: <br/>
 Don't hardcode claims. Arkil injects claims dynamically based on the Tenant and Role context.
