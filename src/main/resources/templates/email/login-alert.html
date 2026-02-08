@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; padding: 40px; }
+        .container { max-width: 600px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 40px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .logo { font-size: 28px; font-weight: 700; color: #1a1a2e; margin-bottom: 30px; }
+        .logo span { color: #e94560; }
+        h1 { color: #1a1a2e; font-size: 24px; margin-bottom: 20px; }
+        p { color: #666; line-height: 1.6; margin-bottom: 20px; }
+        .alert { background: #fff3f3; border: 1px solid #ffcccc; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .alert-title { color: #e94560; font-weight: 600; margin-bottom: 10px; }
+        .info { background: #f5f5f5; border-radius: 8px; padding: 15px; margin: 15px 0; }
+        .info-row { display: flex; margin: 5px 0; }
+        .info-label { color: #999; width: 80px; }
+        .info-value { color: #333; }
+        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #999; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">Ark<span>il</span></div>
+        <h1>New sign-in detected</h1>
+        <p>Hi <strong th:text="${username}">User</strong>,</p>
+        <p>We noticed a new sign-in to your account:</p>
+        <div class="info">
+            <div class="info-row"><span class="info-label">Device:</span><span class="info-value" th:text="${device}">Chrome on macOS</span></div>
+            <div class="info-row"><span class="info-label">Location:</span><span class="info-value" th:text="${location}">Unknown</span></div>
+            <div class="info-row"><span class="info-label">IP:</span><span class="info-value" th:text="${ip}">127.0.0.1</span></div>
+        </div>
+        <div class="alert">
+            <div class="alert-title">⚠️ Wasn't you?</div>
+            <p style="margin: 0;">If you didn't sign in, please change your password immediately and contact support.</p>
+        </div>
+        <div class="footer">
+            <p>© 2026 Arkil. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
