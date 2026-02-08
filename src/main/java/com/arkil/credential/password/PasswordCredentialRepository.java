@@ -9,7 +9,7 @@ import java.util.UUID;
 @Repository
 public interface PasswordCredentialRepository extends JpaRepository<PasswordCredential, UUID> {
 
-    Optional<PasswordCredential> findByUserId(UUID userId);
+    Optional<PasswordCredential> findByUser_Id(UUID userId);
 
-    boolean existsByUserId(UUID userId);
+    boolean existsByUser_Id(UUID userId);
 }

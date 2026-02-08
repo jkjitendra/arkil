@@ -47,6 +47,30 @@ public class RegisteredClientConfig {
                         .build())
                 .build();
 
-        return new InMemoryRegisteredClientRepository(demoClient);
+        // Dashboard client - public SPA with PKCE (no client secret)
+        RegisteredClient dashboardClient = RegisteredClient.withId(UUID.randomUUID().toString())
+                .clientId("arkil-dashboard")
+                .clientAuthenticationMethod(ClientAuthenticationMethod.NONE) // Public client
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
+                .redirectUri("http://localhost:5173/callback")
+                .redirectUri("http://localhost:5173/silent-refresh")
+                .postLogoutRedirectUri("http://localhost:5173/")
+                .scope(OidcScopes.OPENID)
+                .scope(OidcScopes.PROFILE)
+                .scope(OidcScopes.EMAIL)
+                .scope("arkil:admin") // Dashboard admin scope
+                .clientSettings(ClientSettings.builder()
+                        .requireAuthorizationConsent(false) // Skip consent for first-party dashboard
+                        .requireProofKey(true) // Require PKCE
+                        .build())
+                .tokenSettings(TokenSettings.builder()
+                        .accessTokenTimeToLive(Duration.ofMinutes(30))
+                        .refreshTokenTimeToLive(Duration.ofDays(1))
+                        .reuseRefreshTokens(false) // Rotate refresh tokens
+                        .build())
+                .build();
+
+        return new InMemoryRegisteredClientRepository(demoClient, dashboardClient);
     }
 }

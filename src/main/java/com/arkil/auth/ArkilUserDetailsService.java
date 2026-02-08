@@ -39,7 +39,7 @@ public class ArkilUserDetailsService implements UserDetailsService {
                 .findFirst()
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
-        PasswordCredential passwordCredential = passwordCredentialRepository.findByUserId(user.getId())
+        PasswordCredential passwordCredential = passwordCredentialRepository.findByUser_Id(user.getId())
                 .orElseThrow(() -> new UsernameNotFoundException("No password set for user: " + username));
 
         Collection<GrantedAuthority> authorities = user.getRoles().stream()

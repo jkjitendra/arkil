@@ -16,4 +16,9 @@ public interface UserRepository extends JpaRepository<ArkilUser, UUID> {
     boolean existsByTenantIdAndUsername(UUID tenantId, String username);
 
     boolean existsByTenantIdAndEmail(UUID tenantId, String email);
+
+    /**
+     * Find user by email (global lookup for password reset, etc.)
+     */
+    Optional<ArkilUser> findByEmail(String email);
 }
