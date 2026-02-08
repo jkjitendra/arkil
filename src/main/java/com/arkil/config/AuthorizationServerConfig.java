@@ -1,5 +1,6 @@
 package com.arkil.config;
 
+import com.arkil.security.ProjectCorsConfigurationSource;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -34,6 +35,12 @@ import java.util.UUID;
 @EnableWebSecurity
 public class AuthorizationServerConfig {
 
+    private final ProjectCorsConfigurationSource corsConfigurationSource;
+
+    public AuthorizationServerConfig(ProjectCorsConfigurationSource corsConfigurationSource) {
+        this.corsConfigurationSource = corsConfigurationSource;
+    }
+
     /**
      * SecurityFilterChain #1: Authorization Server endpoints.
      * Handles /oauth2/authorize, /oauth2/token, /.well-known/*, etc.
@@ -50,6 +57,8 @@ public class AuthorizationServerConfig {
 
         http
                 .securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+                // Enable CORS for OIDC discovery and token endpoints
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authorize -> authorize
                         .anyRequest().authenticated()
                 )
