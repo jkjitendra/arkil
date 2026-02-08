@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arkil - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            padding: 40px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+        }
+
+        .logo h1 {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .logo span {
+            color: #e94560;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-badge {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+
+        .logout-btn {
+            padding: 8px 20px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: transparent;
+            color: #fff;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .welcome-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .welcome-card h2 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+        }
+
+        .welcome-card p {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 1.1rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #e94560;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 5px;
+        }
+
+        .quick-links {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .quick-links h3 {
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        .links-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+
+        .link-item {
+            display: block;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            text-decoration: none;
+            color: #fff;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .link-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .link-icon {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
+        .link-text {
+            font-size: 0.95rem;
+        }
+
+        .roles {
+            margin-top: 10px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .role-badge {
+            background: rgba(233, 69, 96, 0.2);
+            padding: 4px 10px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            color: #e94560;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <h1>Ark<span>il</span></h1>
+            </div>
+            <div class="user-info">
+                <div class="user-badge" th:if="${clientId}">
+                    Client: <strong th:text="${clientId}">demo-client</strong>
+                </div>
+                <a href="/logout" class="logout-btn">Logout</a>
+            </div>
+        </header>
+
+        <div class="welcome-card">
+            <h2>Welcome, <span th:text="${username ?: 'Guest'}">User</span>! 👋</h2>
+            <p>You have successfully authenticated with Arkil Auth Server.</p>
+            <div class="roles" th:if="${authorities}">
+                <span class="role-badge" th:each="auth : ${authorities}" th:text="${auth}">ROLE_USER</span>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">✅</div>
+                <div class="stat-label">Authenticated</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">🔐</div>
+                <div class="stat-label">Session Active</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">🛡️</div>
+                <div class="stat-label">Secure</div>
+            </div>
+        </div>
+
+        <div class="quick-links">
+            <h3>Quick Links</h3>
+            <div class="links-grid">
+                <a href="/swagger-ui" class="link-item">
+                    <div class="link-icon">📚</div>
+                    <div class="link-text">API Docs</div>
+                </a>
+                <a href="/h2-console" class="link-item">
+                    <div class="link-icon">🗄️</div>
+                    <div class="link-text">H2 Console</div>
+                </a>
+                <a href="/api/v1/meta/auth-modules" class="link-item">
+                    <div class="link-icon">🔧</div>
+                    <div class="link-text">Auth Modules</div>
+                </a>
+                <a href="/actuator/health" class="link-item">
+                    <div class="link-icon">💚</div>
+                    <div class="link-text">Health Check</div>
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
