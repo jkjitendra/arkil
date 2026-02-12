@@ -127,6 +127,33 @@ export interface KeyPairResult {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Public API (no auth required)
+// ─────────────────────────────────────────────────────────────────
+
+export interface RegisterRequest {
+  email: string
+  password: string
+  orgName: string
+  displayName?: string
+}
+
+export async function registerDeveloper(data: RegisterRequest): Promise<{ message: string; userId: string; email: string; orgName: string }> {
+  const response = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+
+  const body = await response.json()
+
+  if (!response.ok) {
+    throw new ApiError(response.status, body.message || 'Registration failed', body)
+  }
+
+  return body
+}
+
+// ─────────────────────────────────────────────────────────────────
 // API Client Factory
 // ─────────────────────────────────────────────────────────────────
 

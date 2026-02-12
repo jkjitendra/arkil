@@ -6,6 +6,7 @@ import { SettingsPage } from './SettingsPage'
 import { CallbackPage } from './CallbackPage'
 import { SilentRefreshPage } from './SilentRefreshPage'
 import { LoginPage } from './LoginPage'
+import { SignupPage } from './SignupPage'
 import { useAuth } from '@/lib/auth'
 
 // Auth guard component
@@ -49,6 +50,12 @@ const callbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/callback',
   component: CallbackPage,
+})
+
+const signupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/signup',
+  component: SignupPage,
 })
 
 const silentRefreshRoute = createRoute({
@@ -142,6 +149,7 @@ const notFoundRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   // Public routes
   loginRoute,
+  signupRoute,
   callbackRoute,
   silentRefreshRoute,
   // Protected routes (each has its own auth guard + layout)

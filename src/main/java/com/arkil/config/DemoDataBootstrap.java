@@ -56,6 +56,12 @@ public class DemoDataBootstrap implements ApplicationRunner {
                 .description("Standard user role")
                 .build());
 
+        // Create TENANT_ADMIN role (for developers who sign up to Arkil)
+        roleRepository.save(Role.builder()
+                .name("TENANT_ADMIN")
+                .description("Tenant administrator - manages projects and auth configuration")
+                .build());
+
         // Create demo user
         ArkilUser user = userRepository.save(ArkilUser.builder()
                 .tenant(tenant)
@@ -72,11 +78,11 @@ public class DemoDataBootstrap implements ApplicationRunner {
         // Create password credential
         passwordCredentialRepository.save(PasswordCredential.builder()
                 .user(user)
-                .passwordHash(passwordEncoder.encode("demo123"))
+                .passwordHash(passwordEncoder.encode("pwdkahahai"))
                 .algorithm("bcrypt")
                 .build());
 
         log.info("Demo data created: tenant={}, user={}", tenant.getSlug(), user.getUsername());
-        log.info("Login with: username=demo, password=demo123");
+        log.info("Login with: username=demo, password=pwdkahahai");
     }
 }
