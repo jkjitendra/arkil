@@ -69,8 +69,16 @@ public class OAuth2ClientConfig {
             OAuth2User oauth2User = delegate.loadUser(userRequest);
 
             // Link to ArkilUser
+            // Pass null for dashboard social login (auto-provisions tenant),
+            // or tenant slug from client context for end-user social login
+            String tenantSlug = null;
+            if (clientContextHolder.hasContext() && clientContextHolder.getContext().isResolved()) {
+                // End-user social login — resolve tenant from client context
+                // Will be fully implemented in Phase 4 with TenantContextFilter
+                tenantSlug = null; // TODO Phase 4: resolve tenant slug from project's tenant
+            }
             ArkilUser arkilUser = oAuth2IdentityService.processOAuth2Login(
-                    provider, oauth2User, "demo"); // TODO: Get tenant from context
+                    provider, oauth2User, tenantSlug);
 
             // Return enriched OAuth2User with ArkilUser authorities
             var authorities = arkilUser.getRoles().stream()
