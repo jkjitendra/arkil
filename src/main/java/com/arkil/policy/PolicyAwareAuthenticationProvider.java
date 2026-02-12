@@ -64,9 +64,9 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
         // Authenticate the user
         String clientId = context != null ? context.getClientId() : "auth-server";
         try {
-            ArkilUser user = userRepository.findAll().stream()
-                    .filter(u -> u.getUsername().equals(username) || u.getEmail().equals(username))
-                    .findFirst()
+            // Look up by email first, then by username
+            ArkilUser user = userRepository.findByEmail(username)
+                    .or(() -> userRepository.findByUsername(username))
                     .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
 
             if (!user.getEnabled()) {
@@ -89,7 +89,8 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
             auditService.logSuccess(AuditEventType.AUTH_LOGIN_SUCCESS, username, ActorType.USER,
                     clientId, request);
 
-            return new UsernamePasswordAuthenticationToken(user.getUsername(), null, authorities);
+            // Use UUID as principal to match ArkilUserDetailsService — this becomes JWT sub
+            return new UsernamePasswordAuthenticationToken(user.getId().toString(), null, authorities);
 
         } catch (AuthenticationException e) {
             if (!(e instanceof BadCredentialsException)) {
