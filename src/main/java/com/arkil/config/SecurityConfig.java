@@ -51,6 +51,7 @@ public class SecurityConfig {
                         // Browser/DevTools specific paths - ignore to avoid OAuth flow interference
                         .requestMatchers("/.well-known/appspecific/**").permitAll()
                         // Auth API endpoints (public)
+                        .requestMatchers("/api/v1/auth/register").permitAll()
                         .requestMatchers("/api/v1/auth/forgot-password", "/api/v1/auth/reset-password").permitAll()
                         .requestMatchers("/api/v1/auth/verify-email", "/api/v1/auth/magic-link").permitAll()
                         // Session creation endpoint (public)
