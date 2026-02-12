@@ -12,12 +12,18 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.text.Normalizer;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * Service for linking OAuth2 identities to ArkilUser accounts.
  * Handles first-time login (create user) and returning login (link existing).
+ *
+ * When no tenant context is provided (dashboard social login), a new tenant
+ * is auto-provisioned and the user becomes TENANT_ADMIN.
  */
 @Service
 @RequiredArgsConstructor
@@ -29,12 +35,14 @@ public class OAuth2IdentityService {
     private final TenantRepository tenantRepository;
     private final RoleRepository roleRepository;
 
+    private static final Pattern SLUG_PATTERN = Pattern.compile("[^a-z0-9-]");
+
     /**
      * Process an OAuth2 login and return/create the associated ArkilUser.
      *
      * @param provider   The OAuth2 provider name (google, github, etc.)
      * @param oauth2User The authenticated OAuth2 user
-     * @param tenantSlug The tenant slug (for now, use "demo" as default)
+     * @param tenantSlug The tenant slug, or null for dashboard social login (auto-provision)
      * @return The linked or newly created ArkilUser
      */
     @Transactional
@@ -63,15 +71,41 @@ public class OAuth2IdentityService {
             return identity.getUser();
         }
 
-        // New social login - find or create user
-        Tenant tenant = tenantRepository.findBySlug(tenantSlug)
-                .orElseThrow(() -> new IllegalStateException("Tenant not found: " + tenantSlug));
+        // New social login - determine tenant
+        Tenant tenant;
+        boolean isDeveloperSignup;
+
+        if (tenantSlug == null) {
+            // Dashboard social login — check if user exists by email globally
+            Optional<ArkilUser> existingUser = userRepository.findByEmail(email);
+            if (existingUser.isPresent()) {
+                // Link social identity to existing user
+                ArkilUser user = existingUser.get();
+                linkSocialIdentity(user, provider, subjectId, email, displayName, pictureUrl);
+                return user;
+            }
+
+            // Auto-provision new tenant for developer signup via social login
+            tenant = autoProvisionTenant(email, displayName);
+            isDeveloperSignup = true;
+        } else {
+            tenant = tenantRepository.findBySlug(tenantSlug)
+                    .orElseThrow(() -> new IllegalStateException("Tenant not found: " + tenantSlug));
+            isDeveloperSignup = false;
+        }
 
         // Try to find existing user by email in this tenant
         ArkilUser user = userRepository.findByTenantIdAndEmail(tenant.getId(), email)
-                .orElseGet(() -> createNewUser(tenant, email, displayName));
+                .orElseGet(() -> createNewUser(tenant, email, displayName, isDeveloperSignup));
 
         // Link the social identity
+        linkSocialIdentity(user, provider, subjectId, email, displayName, pictureUrl);
+
+        return user;
+    }
+
+    private void linkSocialIdentity(ArkilUser user, String provider, String subjectId,
+                                     String email, String displayName, String pictureUrl) {
         SocialIdentity socialIdentity = SocialIdentity.builder()
                 .user(user)
                 .provider(provider)
@@ -83,18 +117,38 @@ public class OAuth2IdentityService {
 
         socialIdentityRepository.save(socialIdentity);
         log.info("Created new social identity for user: {} with provider: {}", user.getUsername(), provider);
-
-        return user;
     }
 
-    private ArkilUser createNewUser(Tenant tenant, String email, String displayName) {
+    private Tenant autoProvisionTenant(String email, String displayName) {
+        String orgName = displayName != null && !displayName.isBlank()
+                ? displayName + "'s Organization"
+                : email.split("@")[0] + "'s Organization";
+
+        String slug = generateSlug(orgName);
+
+        Tenant tenant = tenantRepository.save(Tenant.builder()
+                .slug(slug)
+                .name(orgName)
+                .enabled(true)
+                .build());
+
+        log.info("Auto-provisioned tenant for social signup: slug={}", slug);
+        return tenant;
+    }
+
+    private ArkilUser createNewUser(Tenant tenant, String email, String displayName, boolean isDeveloperSignup) {
         // Generate username from email
         String username = email.split("@")[0] + "_" + System.currentTimeMillis() % 10000;
 
-        Role userRole = roleRepository.findByName("USER")
+        String roleName = isDeveloperSignup ? "TENANT_ADMIN" : "USER";
+        String roleDescription = isDeveloperSignup
+                ? "Tenant administrator - manages projects and auth configuration"
+                : "Standard user role";
+
+        Role role = roleRepository.findByName(roleName)
                 .orElseGet(() -> roleRepository.save(Role.builder()
-                        .name("USER")
-                        .description("Standard user role")
+                        .name(roleName)
+                        .description(roleDescription)
                         .build()));
 
         ArkilUser user = ArkilUser.builder()
@@ -106,11 +160,30 @@ public class OAuth2IdentityService {
                 .emailVerified(true) // Trust the OAuth2 provider's email verification
                 .build();
 
-        user.getRoles().add(userRole);
+        user.getRoles().add(role);
         user = userRepository.save(user);
 
-        log.info("Created new user via OAuth2: {}", user.getUsername());
+        log.info("Created new user via OAuth2: {} (role={})", user.getUsername(), roleName);
         return user;
+    }
+
+    private String generateSlug(String orgName) {
+        String normalized = Normalizer.normalize(orgName, Normalizer.Form.NFD);
+        String slug = SLUG_PATTERN.matcher(normalized.toLowerCase(Locale.ROOT).trim().replace(' ', '-'))
+                .replaceAll("");
+
+        if (slug.isEmpty()) {
+            slug = "org";
+        }
+
+        String baseSlug = slug;
+        int counter = 1;
+        while (tenantRepository.existsBySlug(slug)) {
+            slug = baseSlug + "-" + counter;
+            counter++;
+        }
+
+        return slug;
     }
 
     private String extractSubjectId(String provider, OAuth2User oauth2User) {
