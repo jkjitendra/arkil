@@ -1,6 +1,7 @@
 import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { LogIn } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 
 export function LoginPage() {
   const { login, isLoading } = useAuth()
@@ -35,9 +36,12 @@ export function LoginPage() {
           {isLoading ? 'Loading...' : 'Sign in with Arkil'}
         </Button>
 
-        {/* Footer */}
-        <p className="text-xs text-muted-foreground">
-          You'll be redirected to the Arkil authentication server
+        {/* Signup link */}
+        <p className="text-sm text-muted-foreground">
+          Don't have an account?{' '}
+          <Link to="/signup" className="text-primary hover:underline font-medium">
+            Sign up
+          </Link>
         </p>
       </div>
     </div>
