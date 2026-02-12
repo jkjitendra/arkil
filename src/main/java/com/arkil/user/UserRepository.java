@@ -21,4 +21,14 @@ public interface UserRepository extends JpaRepository<ArkilUser, UUID> {
      * Find user by email (global lookup for password reset, etc.)
      */
     Optional<ArkilUser> findByEmail(String email);
+
+    /**
+     * Find user by username (global lookup for login).
+     */
+    Optional<ArkilUser> findByUsername(String username);
+
+    /**
+     * Check if email is already in use (global, for developer registration).
+     */
+    boolean existsByEmail(String email);
 }
