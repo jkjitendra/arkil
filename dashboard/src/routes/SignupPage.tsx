@@ -3,7 +3,8 @@ import { Link } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { UserPlus, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { UserPlus, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { SocialLoginButtons, AuthDivider } from '@/components/SocialLoginButtons'
 import { registerDeveloper } from '@/lib/api'
 
 export function SignupPage() {
@@ -20,7 +21,6 @@ export function SignupPage() {
     e.preventDefault()
     setError(null)
 
-    // Client-side validation
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return
@@ -36,7 +36,7 @@ export function SignupPage() {
       await registerDeveloper({
         email,
         password,
-        orgName,
+        orgName: orgName.trim() || email.split('@')[0] + "'s Workspace",
         displayName: displayName || undefined,
       })
       setIsSuccess(true)
@@ -89,8 +89,12 @@ export function SignupPage() {
           </CardDescription>
         </CardHeader>
 
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
+        <CardContent className="space-y-4">
+          <SocialLoginButtons mode="signup" disabled={isLoading} />
+
+          <AuthDivider />
+
+          <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                 <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -100,16 +104,17 @@ export function SignupPage() {
 
             <div className="space-y-2">
               <label htmlFor="orgName" className="text-sm font-medium">
-                Organization Name
+                Workspace Name <span className="text-muted-foreground">(optional)</span>
               </label>
               <Input
                 id="orgName"
-                placeholder="Acme Inc."
+                placeholder="Acme Inc. or your name"
                 value={orgName}
                 onChange={(e) => setOrgName(e.target.value)}
-                required
-                autoFocus
               />
+              <p className="text-xs text-muted-foreground">
+                Your team or personal workspace. You can change this later.
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -123,6 +128,7 @@ export function SignupPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoFocus
               />
             </div>
 
@@ -167,22 +173,22 @@ export function SignupPage() {
                 minLength={8}
               />
             </div>
-          </CardContent>
 
-          <CardFooter className="flex flex-col gap-4">
             <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
               <UserPlus className="h-5 w-5" />
               {isLoading ? 'Creating account...' : 'Create Account'}
             </Button>
+          </form>
+        </CardContent>
 
-            <p className="text-sm text-muted-foreground text-center">
-              Already have an account?{' '}
-              <Link to="/login" className="text-primary hover:underline font-medium">
-                Sign in
-              </Link>
-            </p>
-          </CardFooter>
-        </form>
+        <CardFooter className="justify-center">
+          <p className="text-sm text-muted-foreground text-center">
+            Already have an account?{' '}
+            <Link to="/login" className="text-primary hover:underline font-medium">
+              Sign in
+            </Link>
+          </p>
+        </CardFooter>
       </Card>
     </div>
   )
