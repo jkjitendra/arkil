@@ -21,6 +21,7 @@ import { useProject, useDeleteProject } from '@/hooks/useProjects'
 import { useProjectKeys, useRotateKey, useRevokeKey, useCreateKey } from '@/hooks/useKeys'
 import { UpdateProjectModal } from '@/components/UpdateProjectModal'
 import { ApiKeyDisplayModal } from '@/components/ApiKeyDisplayModal'
+import { OidcConfigCard } from '@/components/OidcConfigCard'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 export function ProjectDetailPage() {
@@ -234,6 +235,11 @@ export function ProjectDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* OIDC Configuration */}
+      {project.oidcConfig && (
+        <OidcConfigCard config={project.oidcConfig} projectName={project.name} />
+      )}
 
       {/* API Keys */}
       <div>
