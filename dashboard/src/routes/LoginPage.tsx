@@ -2,6 +2,7 @@ import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { LogIn } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
+import { SocialLoginButtons, AuthDivider } from '@/components/SocialLoginButtons'
 
 export function LoginPage() {
   const { login, isLoading } = useAuth()
@@ -16,9 +17,9 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center space-y-8 p-8">
+      <div className="w-full max-w-sm space-y-8 p-8">
         {/* Logo */}
-        <div className="space-y-4">
+        <div className="text-center space-y-4">
           <div className="h-16 w-16 rounded-2xl bg-primary flex items-center justify-center mx-auto">
             <span className="text-primary-foreground font-bold text-2xl">A</span>
           </div>
@@ -30,14 +31,19 @@ export function LoginPage() {
           </p>
         </div>
 
-        {/* Login button */}
-        <Button size="lg" onClick={handleLogin} disabled={isLoading} className="px-8">
+        {/* Social login buttons */}
+        <SocialLoginButtons mode="signin" disabled={isLoading} />
+
+        <AuthDivider />
+
+        {/* Email/password login via OIDC */}
+        <Button size="lg" onClick={handleLogin} disabled={isLoading} className="w-full">
           <LogIn className="h-5 w-5" />
-          {isLoading ? 'Loading...' : 'Sign in with Arkil'}
+          {isLoading ? 'Loading...' : 'Sign in with Email'}
         </Button>
 
         {/* Signup link */}
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground text-center">
           Don't have an account?{' '}
           <Link to="/signup" className="text-primary hover:underline font-medium">
             Sign up
