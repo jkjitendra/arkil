@@ -63,6 +63,15 @@ async function fetchWithAuth(
 // Types
 // ─────────────────────────────────────────────────────────────────
 
+export interface OidcConfig {
+  clientId: string
+  issuerUrl: string
+  authorizationEndpoint: string
+  tokenEndpoint: string
+  jwksUri: string
+  userinfoEndpoint: string
+}
+
 export interface Project {
   id: string
   name: string
@@ -75,6 +84,7 @@ export interface Project {
   ownerId: string
   createdAt: string
   updatedAt: string
+  oidcConfig?: OidcConfig
 }
 
 export interface DeletedProject {
