@@ -45,5 +45,20 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
     boolean existsBySlugAndDeletedAtIsNull(String slug);
 
     List<Project> findByEnvironment(Project.Environment environment);
+
+    /**
+     * Find active projects by tenant (for multi-tenancy scoping).
+     */
+    List<Project> findByTenantIdAndDeletedAtIsNull(UUID tenantId);
+
+    /**
+     * Find a specific project scoped to a tenant.
+     */
+    Optional<Project> findByIdAndTenantId(UUID id, UUID tenantId);
+
+    /**
+     * Find project by its registered client ID.
+     */
+    Optional<Project> findByRegisteredClientId(String registeredClientId);
 }
 
