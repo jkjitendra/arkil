@@ -35,6 +35,7 @@ public class ProjectController {
     private final ProjectService projectService;
     private final ProjectRepository projectRepository;
     private final ApiKeyService apiKeyService;
+    private final RegisteredClientBridgeService registeredClientBridge;
     private final UrlValidator urlValidator;
     private final org.springframework.core.env.Environment env;
 
@@ -83,6 +84,8 @@ public class ProjectController {
             ));
         }
 
+        UUID tenantId = getTenantId(auth);
+
         ProjectService.ProjectWithKeys result = projectService.createProject(
                 new ProjectService.CreateProjectRequest(
                         request.getName(),
@@ -92,7 +95,8 @@ public class ProjectController {
                         request.getAllowedOrigins(),
                         request.getRedirectUris()
                 ),
-                ownerId
+                ownerId,
+                tenantId
         );
 
         log.info("Project created: {}", result.project().getSlug());
@@ -383,6 +387,24 @@ public class ProjectController {
     }
 
     /**
+     * Extract tenant ID from JWT claims.
+     * Returns null if not present (backward compatibility for dev mode).
+     */
+    private UUID getTenantId(Authentication auth) {
+        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
+            String tenantIdStr = jwt.getClaimAsString("tenant_id");
+            if (tenantIdStr != null) {
+                try {
+                    return UUID.fromString(tenantIdStr);
+                } catch (IllegalArgumentException e) {
+                    log.debug("JWT tenant_id is not a valid UUID: {}", tenantIdStr);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
      * Check if user has super-admin role.
      */
     private boolean hasAdminRole(Authentication auth) {
@@ -392,6 +414,21 @@ public class ProjectController {
     }
 
     private ProjectDto toDto(Project project) {
+        // Build OIDC config if project has a registered client
+        OidcConfig oidcConfig = null;
+        if (project.getRegisteredClientId() != null) {
+            String clientId = registeredClientBridge.getClientIdForProject(project.getSlug());
+            String issuer = getIssuerUrl();
+            oidcConfig = new OidcConfig(
+                    clientId,
+                    issuer,
+                    issuer + "/oauth2/authorize",
+                    issuer + "/oauth2/token",
+                    issuer + "/oauth2/jwks",
+                    issuer + "/userinfo"
+            );
+        }
+
         return new ProjectDto(
                 project.getId(),
                 project.getName(),
@@ -402,8 +439,14 @@ public class ProjectController {
                 project.getAllowedOrigins(),
                 project.getRedirectUris(),
                 project.isActive(),
-                project.getCreatedAt().toString()
+                project.getCreatedAt().toString(),
+                oidcConfig
         );
+    }
+
+    private String getIssuerUrl() {
+        String port = env.getProperty("server.port", "8080");
+        return "http://localhost:" + port;
     }
 
     private DeletedProjectDto toDeletedDto(Project project) {
@@ -440,6 +483,15 @@ public class ProjectController {
     // DTOs
     // ─────────────────────────────────────────────────────────────────
 
+    public record OidcConfig(
+            String clientId,
+            String issuerUrl,
+            String authorizationEndpoint,
+            String tokenEndpoint,
+            String jwksUri,
+            String userinfoEndpoint
+    ) {}
+
     public record ProjectDto(
             UUID id,
             String name,
@@ -450,7 +502,8 @@ public class ProjectController {
             List<String> allowedOrigins,
             List<String> redirectUris,
             boolean active,
-            String createdAt
+            String createdAt,
+            OidcConfig oidcConfig
     ) {}
 
     public record DeletedProjectDto(
