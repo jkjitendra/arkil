@@ -137,6 +137,43 @@ export interface KeyPairResult {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Auth Methods & OAuth Providers
+// ─────────────────────────────────────────────────────────────────
+
+export interface OAuthProviderSummary {
+  provider: string
+  clientId: string
+  environment: string
+  enabled: boolean
+}
+
+export interface AuthMethodsResponse {
+  enabledModules: string[]
+  configuredProviders: OAuthProviderSummary[]
+}
+
+export interface OAuthProviderDto {
+  id: string
+  provider: string
+  clientId: string
+  clientSecretMasked: string
+  scopes: string
+  environment: string
+  enabled: boolean
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface UpsertOAuthProviderRequest {
+  provider: string
+  clientId: string
+  clientSecret: string
+  scopes?: string
+  environment?: string
+  enabled?: boolean
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Public API (no auth required)
 // ─────────────────────────────────────────────────────────────────
 
@@ -161,6 +198,12 @@ export async function registerDeveloper(data: RegisterRequest): Promise<{ messag
   }
 
   return body
+}
+
+export async function fetchPlatformProviders(): Promise<string[]> {
+  const response = await fetch(`${API_BASE}/public/platform-providers`)
+  if (!response.ok) return []
+  return response.json()
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -237,6 +280,39 @@ export function createApiClient(getToken: () => Promise<string | null>) {
     async revokeKey(projectId: string, keyId: string, reason?: string): Promise<void> {
       const params = reason ? `?reason=${encodeURIComponent(reason)}` : ''
       await fetcher(`/projects/${projectId}/keys/${keyId}${params}`, { method: 'DELETE' })
+    },
+
+    // Auth Methods
+    async getAuthMethods(projectId: string): Promise<AuthMethodsResponse> {
+      const res = await fetcher(`/projects/${projectId}/auth-methods`)
+      return res.json()
+    },
+
+    async updateAuthMethods(projectId: string, enabledModules: string[]): Promise<{ enabledModules: string[] }> {
+      const res = await fetcher(`/projects/${projectId}/auth-methods`, {
+        method: 'PUT',
+        body: JSON.stringify({ enabledModules }),
+      })
+      return res.json()
+    },
+
+    // OAuth Providers
+    async listOAuthProviders(projectId: string): Promise<OAuthProviderDto[]> {
+      const res = await fetcher(`/projects/${projectId}/oauth-providers`)
+      return res.json()
+    },
+
+    async upsertOAuthProvider(projectId: string, data: UpsertOAuthProviderRequest): Promise<OAuthProviderDto> {
+      const res = await fetcher(`/projects/${projectId}/oauth-providers`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+
+    async deleteOAuthProvider(projectId: string, provider: string, environment?: string): Promise<void> {
+      const params = environment ? `?environment=${encodeURIComponent(environment)}` : ''
+      await fetcher(`/projects/${projectId}/oauth-providers/${provider}${params}`, { method: 'DELETE' })
     },
   }
 }
