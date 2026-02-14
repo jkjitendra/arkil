@@ -7,6 +7,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -96,6 +97,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "error", "invalid_state",
                 "message", ex.getMessage() != null ? ex.getMessage() : "Operation not allowed in current state",
+                "timestamp", Instant.now().toString()
+        ));
+    }
+
+    /**
+     * Handle missing static resources (e.g. favicon.ico) without logging stack traces.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResourceFound(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "not_found",
+                "message", "Resource not found",
                 "timestamp", Instant.now().toString()
         ));
     }

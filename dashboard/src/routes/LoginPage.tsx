@@ -2,7 +2,7 @@ import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { LogIn } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { SocialLoginButtons, AuthDivider } from '@/components/SocialLoginButtons'
+import { SocialLoginButtons } from '@/components/SocialLoginButtons'
 
 export function LoginPage() {
   const { login, isLoading } = useAuth()
@@ -33,8 +33,6 @@ export function LoginPage() {
 
         {/* Social login buttons */}
         <SocialLoginButtons mode="signin" disabled={isLoading} />
-
-        <AuthDivider />
 
         {/* Email/password login via OIDC */}
         <Button size="lg" onClick={handleLogin} disabled={isLoading} className="w-full">

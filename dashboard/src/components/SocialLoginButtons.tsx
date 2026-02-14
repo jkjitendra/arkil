@@ -1,4 +1,6 @@
 import { Button } from '@/components/ui/button'
+import { useEffect, useState } from 'react'
+import { fetchPlatformProviders } from '@/lib/api'
 
 const SOCIAL_PROVIDERS = [
   {
@@ -43,6 +45,15 @@ interface SocialLoginButtonsProps {
 }
 
 export function SocialLoginButtons({ mode, disabled, onSocialLogin }: SocialLoginButtonsProps) {
+  const [availableProviders, setAvailableProviders] = useState<string[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    fetchPlatformProviders()
+      .then(setAvailableProviders)
+      .finally(() => setLoaded(true))
+  }, [])
+
   const actionLabel = mode === 'signin' ? 'Sign in' : 'Sign up'
 
   const handleClick = (providerId: string) => {
@@ -54,23 +65,33 @@ export function SocialLoginButtons({ mode, disabled, onSocialLogin }: SocialLogi
     }
   }
 
+  const visibleProviders = SOCIAL_PROVIDERS.filter(p => availableProviders.includes(p.id))
+
+  // Don't render anything if no platform providers are configured (or still loading)
+  if (!loaded || visibleProviders.length === 0) {
+    return null
+  }
+
   return (
-    <div className="grid gap-3">
-      {SOCIAL_PROVIDERS.map((provider) => (
-        <Button
-          key={provider.id}
-          type="button"
-          variant="outline"
-          size="lg"
-          className="w-full"
-          disabled={disabled}
-          onClick={() => handleClick(provider.id)}
-        >
-          {provider.icon}
-          {actionLabel} with {provider.label}
-        </Button>
-      ))}
-    </div>
+    <>
+      <div className="grid gap-3">
+        {visibleProviders.map((provider) => (
+          <Button
+            key={provider.id}
+            type="button"
+            variant="outline"
+            size="lg"
+            className="w-full"
+            disabled={disabled}
+            onClick={() => handleClick(provider.id)}
+          >
+            {provider.icon}
+            {actionLabel} with {provider.label}
+          </Button>
+        ))}
+      </div>
+      <AuthDivider />
+    </>
   )
 }
 
