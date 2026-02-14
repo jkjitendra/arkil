@@ -15,7 +15,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "projects", indexes = {
         @Index(name = "idx_project_slug", columnList = "slug"),
-        @Index(name = "idx_project_owner", columnList = "ownerId")
+        @Index(name = "idx_project_owner", columnList = "ownerId"),
+        @Index(name = "idx_project_tenant", columnList = "tenant_id")
 })
 @Getter
 @Setter
@@ -45,6 +46,19 @@ public class Project {
      */
     @Column(nullable = false)
     private UUID ownerId;
+
+    /**
+     * Tenant this project belongs to (for multi-tenancy scoping).
+     */
+    @Column(name = "tenant_id")
+    private UUID tenantId;
+
+    /**
+     * Spring Authorization Server's internal RegisteredClient ID.
+     * Links this project to its OAuth2 client registration.
+     */
+    @Column(name = "registered_client_id")
+    private String registeredClientId;
 
     /**
      * Environment: development, staging, production.

@@ -13,6 +13,7 @@ import java.util.UUID;
 
 /**
  * Service for project management.
+ * Coordinates between Project entity, API keys, and OAuth2 RegisteredClient.
  */
 @Slf4j
 @Service
@@ -21,12 +22,13 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final ApiKeyService apiKeyService;
+    private final RegisteredClientBridgeService registeredClientBridge;
 
     /**
-     * Create a new project with initial API keys.
+     * Create a new project with initial API keys and an OAuth2 RegisteredClient.
      */
     @Transactional
-    public ProjectWithKeys createProject(CreateProjectRequest request, UUID ownerId) {
+    public ProjectWithKeys createProject(CreateProjectRequest request, UUID ownerId, UUID tenantId) {
         // Check name uniqueness for this owner
         if (projectRepository.existsByNameAndOwnerIdAndDeletedAtIsNull(request.name(), ownerId)) {
             throw new IllegalArgumentException("Project name already exists: " + request.name());
@@ -44,6 +46,7 @@ public class ProjectService {
                 .name(request.name())
                 .slug(slug)
                 .ownerId(ownerId)
+                .tenantId(tenantId)
                 .description(request.description())
                 .environment(request.environment() != null ? request.environment() : Project.Environment.DEVELOPMENT)
                 .allowedOrigins(request.allowedOrigins() != null ? request.allowedOrigins() : List.of())
@@ -52,13 +55,27 @@ public class ProjectService {
 
         projectRepository.save(project);
 
+        // Create RegisteredClient + default auth policy
+        String registeredClientId = registeredClientBridge.createRegisteredClientForProject(project);
+        project.setRegisteredClientId(registeredClientId);
+        projectRepository.save(project);
+
         // Create initial API key pair
         ApiKeyService.KeyPairResult testKey = apiKeyService.createKeyPair(
                 project.getId(), "Default Test Key", ApiKey.KeyType.TEST);
 
-        log.info("Created project {} with slug {}", project.getId(), slug);
+        log.info("Created project {} with slug {} and client_id proj_{}", project.getId(), slug, slug);
 
         return new ProjectWithKeys(project, testKey.apiKey(), testKey.secretKeyPlaintext());
+    }
+
+    /**
+     * Overload for backward compatibility — derives tenantId from ownerId context.
+     * TODO: Remove once all callers pass tenantId explicitly.
+     */
+    @Transactional
+    public ProjectWithKeys createProject(CreateProjectRequest request, UUID ownerId) {
+        return createProject(request, ownerId, null);
     }
 
     /**
@@ -83,12 +100,14 @@ public class ProjectService {
     }
 
     /**
-     * Update project.
+     * Update project and sync changes to RegisteredClient.
      */
     @Transactional
     public Project updateProject(UUID projectId, UpdateProjectRequest request) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new IllegalArgumentException("Project not found: " + projectId));
+
+        boolean redirectsChanged = false;
 
         if (request.name() != null) {
             project.setName(request.name());
@@ -101,15 +120,24 @@ public class ProjectService {
         }
         if (request.allowedOrigins() != null) {
             project.setAllowedOrigins(request.allowedOrigins());
+            redirectsChanged = true;
         }
         if (request.redirectUris() != null) {
             project.setRedirectUris(request.redirectUris());
+            redirectsChanged = true;
         }
         if (request.environment() != null) {
             project.setEnvironment(request.environment());
         }
 
-        return projectRepository.save(project);
+        Project saved = projectRepository.save(project);
+
+        // Sync redirect URIs / origins to RegisteredClient if changed
+        if (redirectsChanged) {
+            registeredClientBridge.updateRegisteredClient(saved);
+        }
+
+        return saved;
     }
 
     /**

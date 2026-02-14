@@ -8,26 +8,26 @@ import com.arkil.credential.social.OAuth2IdentityService;
 import com.arkil.policy.ClientContext;
 import com.arkil.policy.ClientContextHolder;
 import com.arkil.user.ArkilUser;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 
-import java.io.IOException;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -98,8 +98,63 @@ public class OAuth2ClientConfig {
         };
     }
 
+    /**
+     * Custom OidcUserService for OIDC providers (Google, Apple, LinkedIn).
+     * These providers return ID tokens, unlike GitHub which only returns OAuth2 tokens.
+     */
+    @Bean
+    public OAuth2UserService<OidcUserRequest, OidcUser> oidcUserService() {
+        OidcUserService delegate = new OidcUserService();
+
+        return userRequest -> {
+            String provider = userRequest.getClientRegistration().getRegistrationId();
+
+            // Check if this provider is enabled for the client
+            if (clientContextHolder.hasContext()) {
+                ClientContext context = clientContextHolder.getContext();
+                AuthModule requiredModule = getModuleForProvider(provider);
+
+                if (requiredModule != null && !context.isModuleEnabled(requiredModule)) {
+                    log.warn("OAuth2 provider {} is disabled for client {}", provider, context.getClientId());
+                    throw new OAuth2AuthenticationException(new OAuth2Error("provider_disabled",
+                            "OAuth2 provider " + provider + " is not enabled for this client", null));
+                }
+            }
+
+            // Load OIDC user from provider
+            OidcUser oidcUser = delegate.loadUser(userRequest);
+
+            // Link to ArkilUser
+            String tenantSlug = null;
+            if (clientContextHolder.hasContext() && clientContextHolder.getContext().isResolved()) {
+                tenantSlug = null; // TODO Phase 4: resolve tenant slug from project's tenant
+            }
+            ArkilUser arkilUser = oAuth2IdentityService.processOAuth2Login(
+                    provider, oidcUser, tenantSlug);
+
+            // Return enriched OidcUser with ArkilUser authorities
+            var authorities = arkilUser.getRoles().stream()
+                    .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getName()))
+                    .collect(Collectors.toSet());
+
+            return new DefaultOidcUser(
+                    authorities,
+                    oidcUser.getIdToken(),
+                    oidcUser.getUserInfo(),
+                    "sub"
+            );
+        };
+    }
+
     @Bean
     public AuthenticationSuccessHandler oauth2SuccessHandler() {
+        // Use SavedRequestAwareAuthenticationSuccessHandler so that after social login,
+        // the user is redirected back to the original OIDC /oauth2/authorize request
+        // (which was saved before the login redirect). This completes the OIDC flow
+        // and issues tokens to the dashboard SPA.
+        SavedRequestAwareAuthenticationSuccessHandler handler = new SavedRequestAwareAuthenticationSuccessHandler();
+        handler.setDefaultTargetUrl("/");
+
         return (request, response, authentication) -> {
             String username = authentication.getName();
 
@@ -110,7 +165,7 @@ public class OAuth2ClientConfig {
             }
 
             log.info("OAuth2 login successful for user: {}", username);
-            response.sendRedirect("/");
+            handler.onAuthenticationSuccess(request, response, authentication);
         };
     }
 

@@ -52,8 +52,10 @@ public class AuthorizationServerConfig {
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 new OAuth2AuthorizationServerConfigurer();
 
-        // Enable OIDC
-        authorizationServerConfigurer.oidc(Customizer.withDefaults());
+        // Enable OIDC with logout support
+        authorizationServerConfigurer.oidc(oidc -> oidc
+                .logoutEndpoint(Customizer.withDefaults())
+        );
 
         http
                 .securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
