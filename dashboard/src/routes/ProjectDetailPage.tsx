@@ -22,6 +22,8 @@ import { useProjectKeys, useRotateKey, useRevokeKey, useCreateKey } from '@/hook
 import { UpdateProjectModal } from '@/components/UpdateProjectModal'
 import { ApiKeyDisplayModal } from '@/components/ApiKeyDisplayModal'
 import { OidcConfigCard } from '@/components/OidcConfigCard'
+import { AuthMethodsCard } from '@/components/AuthMethodsCard'
+import { OAuthProviderSetup } from '@/components/OAuthProviderSetup'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 export function ProjectDetailPage() {
@@ -38,6 +40,10 @@ export function ProjectDetailPage() {
   // State for API key display modal
   const [keyModalOpen, setKeyModalOpen] = useState(false)
   const [newKeyData, setNewKeyData] = useState<{ name: string; secretKey: string; publishableKey?: string } | null>(null)
+
+  // State for OAuth provider setup modal
+  const [providerSetupOpen, setProviderSetupOpen] = useState(false)
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
 
   const rotateMutation = useRotateKey(projectId)
   const revokeMutation = useRevokeKey(projectId)
@@ -236,6 +242,15 @@ export function ProjectDetailPage() {
         </CardContent>
       </Card>
 
+      {/* Authentication Methods */}
+      <AuthMethodsCard
+        projectId={projectId}
+        onConfigureProvider={(provider) => {
+          setSelectedProvider(provider)
+          setProviderSetupOpen(true)
+        }}
+      />
+
       {/* OIDC Configuration */}
       {project.oidcConfig && (
         <OidcConfigCard config={project.oidcConfig} projectName={project.name} />
@@ -426,6 +441,14 @@ export function ProjectDetailPage() {
           publishableKey={newKeyData.publishableKey}
         />
       )}
+
+      {/* OAuth Provider Setup Modal */}
+      <OAuthProviderSetup
+        projectId={projectId}
+        provider={selectedProvider}
+        open={providerSetupOpen}
+        onOpenChange={setProviderSetupOpen}
+      />
     </div>
   )
 }
