@@ -9,12 +9,19 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AuthenticationFailureHandler;
+import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * SecurityFilterChain #2: Application endpoints.
- * Handles login UI, config API, health checks, etc.
+ * Handles login UI, config API, health checks, social login, etc.
  */
 @Configuration
 public class SecurityConfig {
@@ -24,17 +31,32 @@ public class SecurityConfig {
     private final PolicyEnforcementFilter policyEnforcementFilter;
     private final PolicyAwareAuthenticationProvider policyAwareAuthenticationProvider;
     private final ProjectCorsConfigurationSource corsConfigurationSource;
+    private final DynamicClientRegistrationRepository dynamicClientRegistrationRepository;
+    private final OAuth2UserService<OAuth2UserRequest, OAuth2User> oauth2UserService;
+    private final OAuth2UserService<OidcUserRequest, OidcUser> oidcUserService;
+    private final AuthenticationSuccessHandler oauth2SuccessHandler;
+    private final AuthenticationFailureHandler oauth2FailureHandler;
 
     public SecurityConfig(LoginRateLimitFilter loginRateLimitFilter,
                           ClientContextFilter clientContextFilter,
                           PolicyEnforcementFilter policyEnforcementFilter,
                           PolicyAwareAuthenticationProvider policyAwareAuthenticationProvider,
-                          ProjectCorsConfigurationSource corsConfigurationSource) {
+                          ProjectCorsConfigurationSource corsConfigurationSource,
+                          DynamicClientRegistrationRepository dynamicClientRegistrationRepository,
+                          OAuth2UserService<OAuth2UserRequest, OAuth2User> oauth2UserService,
+                          OAuth2UserService<OidcUserRequest, OidcUser> oidcUserService,
+                          AuthenticationSuccessHandler oauth2SuccessHandler,
+                          AuthenticationFailureHandler oauth2FailureHandler) {
         this.loginRateLimitFilter = loginRateLimitFilter;
         this.clientContextFilter = clientContextFilter;
         this.policyEnforcementFilter = policyEnforcementFilter;
         this.policyAwareAuthenticationProvider = policyAwareAuthenticationProvider;
         this.corsConfigurationSource = corsConfigurationSource;
+        this.dynamicClientRegistrationRepository = dynamicClientRegistrationRepository;
+        this.oauth2UserService = oauth2UserService;
+        this.oidcUserService = oidcUserService;
+        this.oauth2SuccessHandler = oauth2SuccessHandler;
+        this.oauth2FailureHandler = oauth2FailureHandler;
     }
 
     @Bean
@@ -47,7 +69,7 @@ public class SecurityConfig {
                         .requestMatchers("/login", "/error", "/actuator/health", "/h2-console/**").permitAll()
                         .requestMatchers("/api/v1/meta/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/webjars/**", "/css/**", "/js/**", "/images/**").permitAll()
+                        .requestMatchers("/webjars/**", "/css/**", "/js/**", "/images/**", "/favicon.ico").permitAll()
                         // Browser/DevTools specific paths - ignore to avoid OAuth flow interference
                         .requestMatchers("/.well-known/appspecific/**").permitAll()
                         // Auth API endpoints (public)
@@ -56,6 +78,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/verify-email", "/api/v1/auth/magic-link").permitAll()
                         // Session creation endpoint (public)
                         .requestMatchers("/api/v1/sessions").permitAll()
+                        // Public project config endpoint (for client-side SDK init)
+                        .requestMatchers("/api/v1/public/**").permitAll()
+                        // OAuth2 social login callback
+                        .requestMatchers("/login/oauth2/code/**").permitAll()
                         // Admin APIs require scope
                         .requestMatchers("/api/v1/clients/**").hasAuthority("SCOPE_arkil:admin")
                         .requestMatchers("/api/v1/admin/**").hasAuthority("SCOPE_arkil:admin")
@@ -65,6 +91,23 @@ public class SecurityConfig {
                 .formLogin(form -> form
                         .loginPage("/login")
                         .permitAll()
+                )
+                .logout(logout -> logout
+                        .logoutSuccessUrl("http://localhost:5173/")
+                        .invalidateHttpSession(true)
+                        .clearAuthentication(true)
+                        .deleteCookies("JSESSIONID")
+                )
+                // OAuth2 social login (Google, GitHub, etc.) with dynamic per-project credentials
+                .oauth2Login(oauth2 -> oauth2
+                        .loginPage("/login")
+                        .clientRegistrationRepository(dynamicClientRegistrationRepository)
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(oauth2UserService)
+                                .oidcUserService(oidcUserService)
+                        )
+                        .successHandler(oauth2SuccessHandler)
+                        .failureHandler(oauth2FailureHandler)
                 )
                 .csrf(csrf -> csrf
                         .ignoringRequestMatchers("/h2-console/**")
@@ -97,6 +140,8 @@ public class SecurityConfig {
                 )
                 // Policy-aware authentication provider
                 .authenticationProvider(policyAwareAuthenticationProvider)
+                // Resource server: accept JWT Bearer tokens for API endpoints
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
                 // Filter chain order: ClientContext -> RateLimit -> PolicyEnforcement -> Authentication
                 .addFilterBefore(clientContextFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
