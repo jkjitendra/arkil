@@ -1,6 +1,7 @@
 import { Link, useLocation } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
+import { useProfile } from '@/hooks/useProfile'
 import {
   LayoutDashboard,
   Key,
@@ -22,12 +23,14 @@ const navigation = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const { user, logout } = useAuth()
+  const { data: profile } = useProfile()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // Get user info from OIDC token
-  const userEmail = user?.profile?.email || 'user@example.com'
-  const userName = user?.profile?.name || user?.profile?.preferred_username || userEmail
+  // Prefer profile API data, fall back to OIDC token claims
+  const userEmail = profile?.email || user?.profile?.email || 'user@example.com'
+  const userName = profile?.displayName || user?.profile?.name || user?.profile?.preferred_username || userEmail
   const userInitial = userName.charAt(0).toUpperCase()
+  const tenantName = profile?.tenant.name
 
   const handleLogout = async () => {
     try {
@@ -119,9 +122,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex-1" />
 
             <div className="flex items-center gap-4">
-              <div className="text-sm text-muted-foreground">
-                <span className="hidden sm:inline">Logged in as </span>
-                <span className="font-medium text-foreground">{userEmail}</span>
+              <div className="text-right text-sm">
+                <div className="font-medium text-foreground">{userName}</div>
+                {tenantName && (
+                  <div className="text-xs text-muted-foreground">{tenantName}</div>
+                )}
               </div>
               <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center">
                 <span className="text-primary text-sm font-medium">{userInitial}</span>

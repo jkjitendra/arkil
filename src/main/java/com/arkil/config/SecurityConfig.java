@@ -5,6 +5,7 @@ import com.arkil.policy.PolicyAwareAuthenticationProvider;
 import com.arkil.policy.PolicyEnforcementFilter;
 import com.arkil.security.LoginRateLimitFilter;
 import com.arkil.security.ProjectCorsConfigurationSource;
+import com.arkil.tenant.TenantContextFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -29,6 +30,7 @@ public class SecurityConfig {
     private final LoginRateLimitFilter loginRateLimitFilter;
     private final ClientContextFilter clientContextFilter;
     private final PolicyEnforcementFilter policyEnforcementFilter;
+    private final TenantContextFilter tenantContextFilter;
     private final PolicyAwareAuthenticationProvider policyAwareAuthenticationProvider;
     private final ProjectCorsConfigurationSource corsConfigurationSource;
     private final DynamicClientRegistrationRepository dynamicClientRegistrationRepository;
@@ -40,6 +42,7 @@ public class SecurityConfig {
     public SecurityConfig(LoginRateLimitFilter loginRateLimitFilter,
                           ClientContextFilter clientContextFilter,
                           PolicyEnforcementFilter policyEnforcementFilter,
+                          TenantContextFilter tenantContextFilter,
                           PolicyAwareAuthenticationProvider policyAwareAuthenticationProvider,
                           ProjectCorsConfigurationSource corsConfigurationSource,
                           DynamicClientRegistrationRepository dynamicClientRegistrationRepository,
@@ -50,6 +53,7 @@ public class SecurityConfig {
         this.loginRateLimitFilter = loginRateLimitFilter;
         this.clientContextFilter = clientContextFilter;
         this.policyEnforcementFilter = policyEnforcementFilter;
+        this.tenantContextFilter = tenantContextFilter;
         this.policyAwareAuthenticationProvider = policyAwareAuthenticationProvider;
         this.corsConfigurationSource = corsConfigurationSource;
         this.dynamicClientRegistrationRepository = dynamicClientRegistrationRepository;
@@ -142,10 +146,11 @@ public class SecurityConfig {
                 .authenticationProvider(policyAwareAuthenticationProvider)
                 // Resource server: accept JWT Bearer tokens for API endpoints
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
-                // Filter chain order: ClientContext -> RateLimit -> PolicyEnforcement -> Authentication
+                // Filter chain order: ClientContext -> RateLimit -> PolicyEnforcement -> TenantContext -> Authentication
                 .addFilterBefore(clientContextFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(policyEnforcementFilter, ClientContextFilter.class);
+                .addFilterAfter(policyEnforcementFilter, ClientContextFilter.class)
+                .addFilterAfter(tenantContextFilter, PolicyEnforcementFilter.class);
 
         return http.build();
     }

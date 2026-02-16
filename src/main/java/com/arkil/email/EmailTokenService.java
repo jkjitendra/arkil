@@ -1,5 +1,6 @@
 package com.arkil.email;
 
+import com.arkil.tenant.TenantContext;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
 import jakarta.transaction.Transactional;
@@ -59,10 +60,16 @@ public class EmailTokenService {
 
     /**
      * Send password reset email.
+     * When TenantContext is set (end-user flow), scopes lookup to that tenant.
+     * When no tenant context (developer dashboard), uses global email lookup.
      */
     @Transactional
     public void sendPasswordResetEmail(String email) {
-        Optional<ArkilUser> userOpt = userRepository.findByEmail(email);
+        UUID tenantId = TenantContext.getTenantId();
+        Optional<ArkilUser> userOpt = tenantId != null
+                ? userRepository.findByTenantIdAndEmail(tenantId, email)
+                : userRepository.findByEmail(email);
+
         if (userOpt.isEmpty()) {
             // Don't reveal if user exists - just log and return
             log.debug("Password reset requested for non-existent email: {}", email);
@@ -93,10 +100,16 @@ public class EmailTokenService {
 
     /**
      * Send magic link for passwordless login.
+     * When TenantContext is set (end-user flow), scopes lookup to that tenant.
+     * When no tenant context (developer dashboard), uses global email lookup.
      */
     @Transactional
     public void sendMagicLink(String email) {
-        Optional<ArkilUser> userOpt = userRepository.findByEmail(email);
+        UUID tenantId = TenantContext.getTenantId();
+        Optional<ArkilUser> userOpt = tenantId != null
+                ? userRepository.findByTenantIdAndEmail(tenantId, email)
+                : userRepository.findByEmail(email);
+
         if (userOpt.isEmpty()) {
             log.debug("Magic link requested for non-existent email: {}", email);
             return;

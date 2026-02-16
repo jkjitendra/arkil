@@ -52,10 +52,16 @@ public class RegistrationController {
         }
 
         try {
+            // Default workspace name from email prefix if not provided
+            String orgName = request.getOrgName();
+            if (orgName == null || orgName.isBlank()) {
+                orgName = request.getEmail().split("@")[0] + "'s Workspace";
+            }
+
             ArkilUser user = registrationService.registerDeveloper(
                     request.getEmail(),
                     request.getPassword(),
-                    request.getOrgName(),
+                    orgName,
                     request.getDisplayName()
             );
 
@@ -63,7 +69,7 @@ public class RegistrationController {
                     "message", "Account created successfully. Please log in.",
                     "userId", user.getId().toString(),
                     "email", user.getEmail(),
-                    "orgName", request.getOrgName()
+                    "orgName", orgName
             ));
         } catch (RegistrationService.RegistrationException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
@@ -83,8 +89,7 @@ public class RegistrationController {
         @Size(min = 8, message = "Password must be at least 8 characters")
         private String password;
 
-        @NotBlank(message = "Organization name is required")
-        @Size(min = 2, max = 100, message = "Organization name must be between 2 and 100 characters")
+        @Size(max = 100, message = "Workspace name must be at most 100 characters")
         private String orgName;
 
         @Size(max = 100, message = "Display name must be at most 100 characters")
