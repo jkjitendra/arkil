@@ -7,6 +7,10 @@ import com.arkil.client.AuthModule;
 import com.arkil.credential.social.OAuth2IdentityService;
 import com.arkil.policy.ClientContext;
 import com.arkil.policy.ClientContextHolder;
+import com.arkil.project.Project;
+import com.arkil.project.ProjectRepository;
+import com.arkil.tenant.Tenant;
+import com.arkil.tenant.TenantRepository;
 import com.arkil.user.ArkilUser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +33,8 @@ import org.springframework.security.web.authentication.AuthenticationSuccessHand
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +48,8 @@ public class OAuth2ClientConfig {
     private final OAuth2IdentityService oAuth2IdentityService;
     private final ClientContextHolder clientContextHolder;
     private final AuditService auditService;
+    private final ProjectRepository projectRepository;
+    private final TenantRepository tenantRepository;
 
     /**
      * Custom OAuth2UserService that links external identities to ArkilUsers.
@@ -71,12 +79,7 @@ public class OAuth2ClientConfig {
             // Link to ArkilUser
             // Pass null for dashboard social login (auto-provisions tenant),
             // or tenant slug from client context for end-user social login
-            String tenantSlug = null;
-            if (clientContextHolder.hasContext() && clientContextHolder.getContext().isResolved()) {
-                // End-user social login — resolve tenant from client context
-                // Will be fully implemented in Phase 4 with TenantContextFilter
-                tenantSlug = null; // TODO Phase 4: resolve tenant slug from project's tenant
-            }
+            String tenantSlug = resolveTenantSlugFromClientContext();
             ArkilUser arkilUser = oAuth2IdentityService.processOAuth2Login(
                     provider, oauth2User, tenantSlug);
 
@@ -125,10 +128,7 @@ public class OAuth2ClientConfig {
             OidcUser oidcUser = delegate.loadUser(userRequest);
 
             // Link to ArkilUser
-            String tenantSlug = null;
-            if (clientContextHolder.hasContext() && clientContextHolder.getContext().isResolved()) {
-                tenantSlug = null; // TODO Phase 4: resolve tenant slug from project's tenant
-            }
+            String tenantSlug = resolveTenantSlugFromClientContext();
             ArkilUser arkilUser = oAuth2IdentityService.processOAuth2Login(
                     provider, oidcUser, tenantSlug);
 
@@ -181,6 +181,34 @@ public class OAuth2ClientConfig {
             log.warn("OAuth2 login failed: {}", exception.getMessage());
             response.sendRedirect("/login?error=oauth2");
         };
+    }
+
+    /**
+     * Resolve the tenant slug from the current client context.
+     * Returns null for dashboard social login (no client context → auto-provision tenant).
+     * Returns the project's tenant slug for end-user social login.
+     */
+    private String resolveTenantSlugFromClientContext() {
+        if (!clientContextHolder.hasContext() || !clientContextHolder.getContext().isResolved()) {
+            return null; // Dashboard social login — will auto-provision tenant
+        }
+
+        String clientId = clientContextHolder.getContext().getClientId();
+        if (clientId == null || !clientId.startsWith("proj_")) {
+            return null;
+        }
+
+        String slug = clientId.substring("proj_".length());
+        Optional<Project> projectOpt = projectRepository.findBySlug(slug);
+        if (projectOpt.isEmpty() || projectOpt.get().getTenantId() == null) {
+            log.warn("Could not resolve tenant for project client_id: {}", clientId);
+            return null;
+        }
+
+        UUID tenantId = projectOpt.get().getTenantId();
+        return tenantRepository.findById(tenantId)
+                .map(Tenant::getSlug)
+                .orElse(null);
     }
 
     private AuthModule getModuleForProvider(String provider) {
