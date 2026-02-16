@@ -67,8 +67,13 @@ public class OAuth2IdentityService {
             identity.setPictureUrl(pictureUrl);
             socialIdentityRepository.save(identity);
 
-            log.info("Returning OAuth2 user: {}", identity.getUser().getUsername());
-            return identity.getUser();
+            // Update last login timestamp
+            ArkilUser returningUser = identity.getUser();
+            returningUser.setLastLoginAt(Instant.now());
+            userRepository.save(returningUser);
+
+            log.info("Returning OAuth2 user: {}", returningUser.getUsername());
+            return returningUser;
         }
 
         // New social login - determine tenant
@@ -82,6 +87,8 @@ public class OAuth2IdentityService {
                 // Link social identity to existing user
                 ArkilUser user = existingUser.get();
                 linkSocialIdentity(user, provider, subjectId, email, displayName, pictureUrl);
+                user.setLastLoginAt(Instant.now());
+                userRepository.save(user);
                 return user;
             }
 
