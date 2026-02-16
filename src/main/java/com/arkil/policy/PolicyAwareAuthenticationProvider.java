@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.stream.Collectors;
 
@@ -88,6 +89,10 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
 
             auditService.logSuccess(AuditEventType.AUTH_LOGIN_SUCCESS, username, ActorType.USER,
                     clientId, request);
+
+            // Update last login timestamp
+            user.setLastLoginAt(Instant.now());
+            userRepository.save(user);
 
             // Use UUID as principal to match ArkilUserDetailsService — this becomes JWT sub
             return new UsernamePasswordAuthenticationToken(user.getId().toString(), null, authorities);
