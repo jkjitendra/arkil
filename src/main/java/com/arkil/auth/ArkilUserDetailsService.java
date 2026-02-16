@@ -2,6 +2,7 @@ package com.arkil.auth;
 
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
+import com.arkil.tenant.TenantContext;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -24,6 +26,10 @@ import java.util.stream.Collectors;
  * Supports login by email or username.
  * Uses the user's UUID as the Spring Security principal (username field)
  * so that JWT sub claim contains the UUID for downstream use.
+ *
+ * Tenant-aware: When TenantContext is set (end-user login via client context),
+ * user lookup is scoped to that tenant. When no tenant context (dashboard login),
+ * global email/username lookup is used.
  */
 @Service
 @RequiredArgsConstructor
@@ -36,14 +42,16 @@ public class ArkilUserDetailsService implements UserDetailsService {
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
-        // Try email first, then username
-        Optional<ArkilUser> userOpt = userRepository.findByEmail(identifier);
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByUsername(identifier);
-        }
+        UUID tenantId = TenantContext.getTenantId();
+        ArkilUser user;
 
-        ArkilUser user = userOpt
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + identifier));
+        if (tenantId != null) {
+            // End-user login context: scope lookup to tenant
+            user = findUserInTenant(identifier, tenantId);
+        } else {
+            // Dashboard login context: global lookup
+            user = findUserGlobally(identifier);
+        }
 
         PasswordCredential passwordCredential = passwordCredentialRepository.findByUser_Id(user.getId())
                 .orElseThrow(() -> new UsernameNotFoundException("No password set for user: " + identifier));
@@ -59,5 +67,25 @@ public class ArkilUserDetailsService implements UserDetailsService {
                 .disabled(!user.getEnabled())
                 .authorities(authorities)
                 .build();
+    }
+
+    private ArkilUser findUserInTenant(String identifier, UUID tenantId) {
+        Optional<ArkilUser> userOpt = userRepository.findByTenantIdAndEmail(tenantId, identifier);
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByTenantIdAndUsername(tenantId, identifier);
+        }
+
+        return userOpt.orElseThrow(() ->
+                new UsernameNotFoundException("User not found in tenant: " + identifier));
+    }
+
+    private ArkilUser findUserGlobally(String identifier) {
+        Optional<ArkilUser> userOpt = userRepository.findByEmail(identifier);
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByUsername(identifier);
+        }
+
+        return userOpt.orElseThrow(() ->
+                new UsernameNotFoundException("User not found: " + identifier));
     }
 }
