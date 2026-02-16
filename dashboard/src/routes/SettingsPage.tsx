@@ -1,9 +1,90 @@
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Save, User, Shield, Bell } from 'lucide-react'
+import { Save, User, Shield, Key, Loader2, Check, AlertTriangle } from 'lucide-react'
+import { useProfile, useUpdateProfile, useChangePassword, useDeleteAccount } from '@/hooks/useProfile'
+import { useAuth } from '@/lib/auth'
 
 export function SettingsPage() {
+  const { data: profile, isLoading } = useProfile()
+  const updateProfile = useUpdateProfile()
+  const changePassword = useChangePassword()
+  const deleteAccount = useDeleteAccount()
+  const { logout } = useAuth()
+
+  // Profile form state
+  const [displayName, setDisplayName] = useState('')
+  const [profileSaved, setProfileSaved] = useState(false)
+
+  // Password form state
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState('')
+
+  // Delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  useEffect(() => {
+    if (profile) {
+      setDisplayName(profile.displayName || '')
+    }
+  }, [profile])
+
+  const handleSaveProfile = async () => {
+    setProfileSaved(false)
+    await updateProfile.mutateAsync({ displayName })
+    setProfileSaved(true)
+    setTimeout(() => setProfileSaved(false), 3000)
+  }
+
+  const handleChangePassword = async () => {
+    setPasswordError('')
+    setPasswordSuccess('')
+
+    if (newPassword.length < 8) {
+      setPasswordError('Password must be at least 8 characters')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match')
+      return
+    }
+
+    try {
+      await changePassword.mutateAsync({
+        currentPassword: profile?.hasPassword ? currentPassword : undefined,
+        newPassword,
+      })
+      setPasswordSuccess(profile?.hasPassword ? 'Password changed successfully' : 'Password set successfully')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to change password'
+      setPasswordError(message)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    try {
+      await deleteAccount.mutateAsync()
+      await logout()
+    } catch {
+      // Account was disabled even if logout fails
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -31,21 +112,91 @@ export function SettingsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="text-sm font-medium">Display Name</label>
-              <Input defaultValue="Admin User" className="mt-1.5" />
+              <Input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="mt-1.5"
+                placeholder="Your display name"
+              />
             </div>
             <div>
               <label className="text-sm font-medium">Email</label>
-              <Input defaultValue="admin@example.com" className="mt-1.5" readOnly />
+              <Input value={profile?.email || ''} className="mt-1.5" readOnly />
             </div>
           </div>
-          <Button>
-            <Save className="h-4 w-4" />
-            Save Changes
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleSaveProfile}
+              disabled={updateProfile.isPending}
+            >
+              {updateProfile.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : profileSaved ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              {profileSaved ? 'Saved' : 'Save Changes'}
+            </Button>
+          </div>
+
+          {/* Connected Accounts */}
+          {profile?.connectedAccounts && profile.connectedAccounts.length > 0 && (
+            <div className="pt-4 border-t">
+              <p className="text-sm font-medium mb-3">Connected Accounts</p>
+              <div className="space-y-2">
+                {profile.connectedAccounts.map((account) => (
+                  <div
+                    key={account.provider}
+                    className="flex items-center justify-between p-3 rounded-lg border"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                        <span className="text-xs font-medium capitalize">
+                          {account.provider.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium capitalize">{account.provider}</p>
+                        <p className="text-xs text-muted-foreground">{account.email}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {account.connectedAt
+                        ? `Connected ${new Date(account.connectedAt).toLocaleDateString()}`
+                        : 'Connected'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Account Info */}
+          <div className="pt-4 border-t">
+            <div className="grid gap-2 text-sm text-muted-foreground">
+              <div className="flex justify-between">
+                <span>Organization</span>
+                <span className="font-medium text-foreground">{profile?.tenant.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Roles</span>
+                <span className="font-medium text-foreground">{profile?.roles.join(', ')}</span>
+              </div>
+              {profile?.createdAt && (
+                <div className="flex justify-between">
+                  <span>Member since</span>
+                  <span className="font-medium text-foreground">
+                    {new Date(profile.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Security */}
+      {/* Security - Password */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
@@ -53,69 +204,69 @@ export function SettingsPage() {
               <Shield className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <CardTitle>Security</CardTitle>
-              <CardDescription>Manage your security settings</CardDescription>
+              <CardTitle>{profile?.hasPassword ? 'Change Password' : 'Set Password'}</CardTitle>
+              <CardDescription>
+                {profile?.hasPassword
+                  ? 'Update your password'
+                  : 'Set a password for email/password login'}
+              </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 rounded-lg border">
+          {profile?.hasPassword && (
             <div>
-              <p className="font-medium">Two-Factor Authentication</p>
-              <p className="text-sm text-muted-foreground">
-                Add an extra layer of security to your account
-              </p>
+              <label className="text-sm font-medium">Current Password</label>
+              <Input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                className="mt-1.5 max-w-md"
+                placeholder="Enter current password"
+              />
             </div>
-            <Button variant="outline">Enable</Button>
-          </div>
-          <div className="flex items-center justify-between p-4 rounded-lg border">
+          )}
+          <div className="grid gap-4 md:grid-cols-2 max-w-2xl">
             <div>
-              <p className="font-medium">Active Sessions</p>
-              <p className="text-sm text-muted-foreground">
-                Manage devices where you're logged in
-              </p>
+              <label className="text-sm font-medium">New Password</label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="mt-1.5"
+                placeholder="At least 8 characters"
+              />
             </div>
-            <Button variant="outline">View All</Button>
+            <div>
+              <label className="text-sm font-medium">Confirm Password</label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="mt-1.5"
+                placeholder="Confirm new password"
+              />
+            </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Notifications */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
-              <Bell className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <CardTitle>Notifications</CardTitle>
-              <CardDescription>Configure how you receive updates</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 rounded-lg border">
-            <div>
-              <p className="font-medium">Security Alerts</p>
-              <p className="text-sm text-muted-foreground">
-                Get notified about suspicious activity
-              </p>
-            </div>
-            <div className="h-6 w-11 bg-primary rounded-full relative cursor-pointer">
-              <div className="absolute right-0.5 top-0.5 h-5 w-5 bg-white rounded-full shadow" />
-            </div>
-          </div>
-          <div className="flex items-center justify-between p-4 rounded-lg border">
-            <div>
-              <p className="font-medium">API Usage Reports</p>
-              <p className="text-sm text-muted-foreground">
-                Weekly summary of API usage
-              </p>
-            </div>
-            <div className="h-6 w-11 bg-muted rounded-full relative cursor-pointer">
-              <div className="absolute left-0.5 top-0.5 h-5 w-5 bg-white rounded-full shadow" />
-            </div>
-          </div>
+          {passwordError && (
+            <p className="text-sm text-destructive">{passwordError}</p>
+          )}
+          {passwordSuccess && (
+            <p className="text-sm text-green-600">{passwordSuccess}</p>
+          )}
+
+          <Button
+            onClick={handleChangePassword}
+            disabled={changePassword.isPending || !newPassword}
+          >
+            {changePassword.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Key className="h-4 w-4" />
+            )}
+            {profile?.hasPassword ? 'Change Password' : 'Set Password'}
+          </Button>
         </CardContent>
       </Card>
 
@@ -130,10 +281,40 @@ export function SettingsPage() {
             <div>
               <p className="font-medium">Delete Account</p>
               <p className="text-sm text-muted-foreground">
-                Permanently delete your account and all data
+                Disable your account. Contact support for permanent deletion.
               </p>
             </div>
-            <Button variant="destructive">Delete Account</Button>
+            {showDeleteConfirm ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteAccount}
+                  disabled={deleteAccount.isPending}
+                >
+                  {deleteAccount.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4" />
+                  )}
+                  Confirm
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="destructive"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                Delete Account
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
