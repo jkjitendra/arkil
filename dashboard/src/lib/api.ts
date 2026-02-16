@@ -174,6 +174,48 @@ export interface UpsertOAuthProviderRequest {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// User Profile & Tenant
+// ─────────────────────────────────────────────────────────────────
+
+export interface ConnectedAccount {
+  provider: string
+  email: string
+  displayName: string
+  pictureUrl?: string
+  connectedAt?: string
+}
+
+export interface TenantInfo {
+  id: string
+  name: string
+  slug: string
+}
+
+export interface UserProfile {
+  id: string
+  username: string
+  email: string
+  displayName?: string
+  emailVerified: boolean
+  enabled: boolean
+  hasPassword: boolean
+  connectedAccounts: ConnectedAccount[]
+  tenant: TenantInfo
+  roles: string[]
+  createdAt?: string
+  lastLoginAt?: string
+}
+
+export interface UpdateProfileRequest {
+  displayName?: string
+}
+
+export interface ChangePasswordRequest {
+  currentPassword?: string
+  newPassword: string
+}
+
+// ─────────────────────────────────────────────────────────────────
 // Public API (no auth required)
 // ─────────────────────────────────────────────────────────────────
 
@@ -313,6 +355,33 @@ export function createApiClient(getToken: () => Promise<string | null>) {
     async deleteOAuthProvider(projectId: string, provider: string, environment?: string): Promise<void> {
       const params = environment ? `?environment=${encodeURIComponent(environment)}` : ''
       await fetcher(`/projects/${projectId}/oauth-providers/${provider}${params}`, { method: 'DELETE' })
+    },
+
+    // User Profile
+    async getProfile(): Promise<UserProfile> {
+      const res = await fetcher('/users/me')
+      return res.json()
+    },
+
+    async updateProfile(data: UpdateProfileRequest): Promise<{ message: string; displayName: string }> {
+      const res = await fetcher('/users/me', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+
+    async changePassword(data: ChangePasswordRequest): Promise<{ message: string }> {
+      const res = await fetcher('/users/me/password', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+
+    async deleteAccount(): Promise<{ message: string }> {
+      const res = await fetcher('/users/me', { method: 'DELETE' })
+      return res.json()
     },
   }
 }
