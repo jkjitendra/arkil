@@ -57,6 +57,16 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
     Optional<Project> findByIdAndTenantId(UUID id, UUID tenantId);
 
     /**
+     * Find deleted projects by tenant (for tenant-scoped trash view).
+     */
+    List<Project> findByTenantIdAndDeletedAtIsNotNull(UUID tenantId);
+
+    /**
+     * Check if a project name already exists within a tenant (excludes deleted).
+     */
+    boolean existsByNameAndTenantIdAndDeletedAtIsNull(String name, UUID tenantId);
+
+    /**
      * Find project by its registered client ID.
      */
     Optional<Project> findByRegisteredClientId(String registeredClientId);
