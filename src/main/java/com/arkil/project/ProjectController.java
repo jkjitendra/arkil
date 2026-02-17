@@ -46,8 +46,14 @@ public class ProjectController {
     @GetMapping
     @Operation(summary = "List projects")
     public ResponseEntity<List<ProjectDto>> listProjects(Authentication auth) {
-        UUID ownerId = getOwnerId(auth);
-        List<Project> projects = projectService.listProjects(ownerId);
+        UUID tenantId = getTenantId(auth);
+        List<Project> projects;
+
+        if (tenantId != null) {
+            projects = projectService.listProjectsByTenant(tenantId);
+        } else {
+            projects = projectService.listProjects(getOwnerId(auth));
+        }
 
         return ResponseEntity.ok(projects.stream()
                 .map(this::toDto)
@@ -111,10 +117,7 @@ public class ProjectController {
     @GetMapping("/{projectId}")
     @Operation(summary = "Get project by ID")
     public ResponseEntity<?> getProject(@PathVariable UUID projectId, Authentication auth) {
-        UUID ownerId = getOwnerId(auth);
-        
-        return projectService.getProject(projectId)
-                .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
+        return verifyProjectAccess(projectId, auth)
                 .map(p -> ResponseEntity.ok(toDto(p)))
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -126,12 +129,8 @@ public class ProjectController {
             @Valid @RequestBody UpdateProjectRequest request,
             Authentication auth) {
 
-        UUID ownerId = getOwnerId(auth);
-        
-        // Verify ownership
-        Project existing = projectService.getProject(projectId)
-                .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
-                .orElse(null);
+        // Verify tenant membership
+        Project existing = verifyProjectAccess(projectId, auth).orElse(null);
         
         if (existing == null) {
             return ResponseEntity.notFound().build();
@@ -179,17 +178,13 @@ public class ProjectController {
     @DeleteMapping("/{projectId}")
     @Operation(summary = "Delete project (soft delete)")
     public ResponseEntity<?> deleteProject(@PathVariable UUID projectId, Authentication auth) {
-        UUID ownerId = getOwnerId(auth);
-        
-        // Verify ownership
-        Project existing = projectService.getProject(projectId)
-                .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
-                .orElse(null);
-        
+        // Verify tenant membership
+        Project existing = verifyProjectAccess(projectId, auth).orElse(null);
+
         if (existing == null) {
             return ResponseEntity.notFound().build();
         }
-        
+
         projectService.deleteProject(projectId);
         return ResponseEntity.ok(Map.of("message", "Project deleted"));
     }
@@ -197,8 +192,14 @@ public class ProjectController {
     @GetMapping("/deleted")
     @Operation(summary = "List deleted projects (can be restored within 7 days)")
     public ResponseEntity<List<DeletedProjectDto>> listDeletedProjects(Authentication auth) {
-        UUID ownerId = getOwnerId(auth);
-        List<Project> deletedProjects = projectService.listDeletedProjects(ownerId);
+        UUID tenantId = getTenantId(auth);
+        List<Project> deletedProjects;
+
+        if (tenantId != null) {
+            deletedProjects = projectService.listDeletedProjectsByTenant(tenantId);
+        } else {
+            deletedProjects = projectService.listDeletedProjects(getOwnerId(auth));
+        }
 
         return ResponseEntity.ok(deletedProjects.stream()
                 .map(this::toDeletedDto)
@@ -208,17 +209,23 @@ public class ProjectController {
     @PostMapping("/{projectId}/restore")
     @Operation(summary = "Restore a deleted project (within 7 days)")
     public ResponseEntity<?> restoreProject(@PathVariable UUID projectId, Authentication auth) {
-        UUID ownerId = getOwnerId(auth);
-        
-        // Verify ownership - need to get even deleted projects
-        Project existing = projectRepository.findById(projectId)
-                .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
-                .orElse(null);
-        
+        // Verify tenant membership (includes deleted projects)
+        UUID tenantId = getTenantId(auth);
+        Project existing;
+
+        if (tenantId != null) {
+            existing = projectRepository.findByIdAndTenantId(projectId, tenantId).orElse(null);
+        } else {
+            UUID ownerId = getOwnerId(auth);
+            existing = projectRepository.findById(projectId)
+                    .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
+                    .orElse(null);
+        }
+
         if (existing == null) {
             return ResponseEntity.notFound().build();
         }
-        
+
         Project restored = projectService.restoreProject(projectId);
         return ResponseEntity.ok(toDto(restored));
     }
@@ -230,13 +237,9 @@ public class ProjectController {
     @GetMapping("/{projectId}/keys")
     @Operation(summary = "List API keys for project")
     public ResponseEntity<?> listKeys(@PathVariable UUID projectId, Authentication auth) {
-        UUID ownerId = getOwnerId(auth);
-        
-        // Verify ownership
-        Project project = projectService.getProject(projectId)
-                .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
-                .orElse(null);
-        
+        // Verify tenant membership
+        Project project = verifyProjectAccess(projectId, auth).orElse(null);
+
         if (project == null) {
             return ResponseEntity.notFound().build();
         }
@@ -254,13 +257,9 @@ public class ProjectController {
             @Valid @RequestBody CreateKeyRequest request,
             Authentication auth) {
 
-        UUID ownerId = getOwnerId(auth);
-        
-        // Verify ownership
-        Project project = projectService.getProject(projectId)
-                .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
-                .orElse(null);
-        
+        // Verify tenant membership
+        Project project = verifyProjectAccess(projectId, auth).orElse(null);
+
         if (project == null) {
             return ResponseEntity.notFound().build();
         }
@@ -283,13 +282,9 @@ public class ProjectController {
             @PathVariable UUID keyId,
             Authentication auth) {
 
-        UUID ownerId = getOwnerId(auth);
-        
-        // Verify project ownership
-        Project project = projectService.getProject(projectId)
-                .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
-                .orElse(null);
-        
+        // Verify tenant membership
+        Project project = verifyProjectAccess(projectId, auth).orElse(null);
+
         if (project == null) {
             return ResponseEntity.notFound().build();
         }
@@ -318,13 +313,9 @@ public class ProjectController {
             @RequestParam(required = false) String reason,
             Authentication auth) {
 
-        UUID ownerId = getOwnerId(auth);
-        
-        // Verify project ownership
-        Project project = projectService.getProject(projectId)
-                .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
-                .orElse(null);
-        
+        // Verify tenant membership
+        Project project = verifyProjectAccess(projectId, auth).orElse(null);
+
         if (project == null) {
             return ResponseEntity.notFound().build();
         }
@@ -345,6 +336,25 @@ public class ProjectController {
     // ─────────────────────────────────────────────────────────────────
     // Helper Methods
     // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Verify the authenticated user has access to the project.
+     * Uses tenant-scoped lookup when tenant_id is present in JWT,
+     * falls back to owner-based check for backward compatibility.
+     */
+    private java.util.Optional<Project> verifyProjectAccess(UUID projectId, Authentication auth) {
+        UUID tenantId = getTenantId(auth);
+
+        if (tenantId != null) {
+            // Tenant-scoped access check (Phase 4)
+            return projectService.getProjectForTenant(projectId, tenantId);
+        }
+
+        // Fallback: owner-based check (backward compatibility)
+        UUID ownerId = getOwnerId(auth);
+        return projectService.getProject(projectId)
+                .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth));
+    }
 
     /**
      * Extract user ID from authentication principal.

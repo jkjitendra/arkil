@@ -10,16 +10,20 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Admin API controller for user management.
  * Part of Surface C (Admin/Dashboard APIs).
- * 
- * Requires: admin OAuth token with arkil:admin scope
+ *
+ * Requires: admin OAuth token with arkil:admin scope.
+ * TENANT_ADMINs can only see and manage users within their own tenant.
  */
 @Slf4j
 @RestController
@@ -32,28 +36,40 @@ public class AdminUserController {
     private final UserRepository userRepository;
 
     @GetMapping
-    @Operation(summary = "List all users (paginated)")
-    public ResponseEntity<Page<UserDto>> listUsers(Pageable pageable) {
-        Page<ArkilUser> users = userRepository.findAll(pageable);
+    @Operation(summary = "List users (scoped to tenant)")
+    public ResponseEntity<Page<UserDto>> listUsers(Pageable pageable, Authentication auth) {
+        UUID tenantId = getTenantId(auth);
+
+        Page<ArkilUser> users;
+        if (tenantId != null) {
+            users = userRepository.findByTenantId(tenantId, pageable);
+        } else {
+            users = userRepository.findAll(pageable);
+        }
+
         return ResponseEntity.ok(users.map(this::toDto));
     }
 
     @GetMapping("/{userId}")
     @Operation(summary = "Get user by ID")
-    public ResponseEntity<UserDto> getUser(@PathVariable UUID userId) {
-        return userRepository.findById(userId)
+    public ResponseEntity<UserDto> getUser(@PathVariable UUID userId, Authentication auth) {
+        Optional<ArkilUser> userOpt = findUserInTenant(userId, auth);
+        return userOpt
                 .map(u -> ResponseEntity.ok(toDto(u)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PutMapping("/{userId}")
     @Operation(summary = "Update user")
-    public ResponseEntity<UserDto> updateUser(
+    public ResponseEntity<?> updateUser(
             @PathVariable UUID userId,
-            @RequestBody UpdateUserRequest request) {
+            @RequestBody UpdateUserRequest request,
+            Authentication auth) {
 
-        ArkilUser user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        ArkilUser user = findUserInTenant(userId, auth).orElse(null);
+        if (user == null) {
+            return ResponseEntity.notFound().build();
+        }
 
         if (request.enabled() != null) {
             user.setEnabled(request.enabled());
@@ -71,8 +87,9 @@ public class AdminUserController {
 
     @DeleteMapping("/{userId}")
     @Operation(summary = "Delete user")
-    public ResponseEntity<Map<String, String>> deleteUser(@PathVariable UUID userId) {
-        if (!userRepository.existsById(userId)) {
+    public ResponseEntity<Map<String, String>> deleteUser(@PathVariable UUID userId, Authentication auth) {
+        ArkilUser user = findUserInTenant(userId, auth).orElse(null);
+        if (user == null) {
             return ResponseEntity.notFound().build();
         }
 
@@ -84,16 +101,17 @@ public class AdminUserController {
 
     @PostMapping("/{userId}/block")
     @Operation(summary = "Block user (disable account)")
-    public ResponseEntity<Map<String, String>> blockUser(
+    public ResponseEntity<?> blockUser(
             @PathVariable UUID userId,
-            @RequestBody(required = false) BlockRequest request) {
+            @RequestBody(required = false) BlockRequest request,
+            Authentication auth) {
 
-        ArkilUser user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+        ArkilUser user = findUserInTenant(userId, auth).orElse(null);
+        if (user == null) {
+            return ResponseEntity.notFound().build();
+        }
 
         user.setEnabled(false);
-        // TODO: Add blocked reason and blockedAt fields
-
         userRepository.save(user);
 
         log.warn("Admin blocked user {}: {}", userId, request != null ? request.reason() : "No reason");
@@ -103,9 +121,11 @@ public class AdminUserController {
 
     @PostMapping("/{userId}/unblock")
     @Operation(summary = "Unblock user (enable account)")
-    public ResponseEntity<Map<String, String>> unblockUser(@PathVariable UUID userId) {
-        ArkilUser user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+    public ResponseEntity<Map<String, String>> unblockUser(@PathVariable UUID userId, Authentication auth) {
+        ArkilUser user = findUserInTenant(userId, auth).orElse(null);
+        if (user == null) {
+            return ResponseEntity.notFound().build();
+        }
 
         user.setEnabled(true);
         userRepository.save(user);
@@ -113,6 +133,34 @@ public class AdminUserController {
         log.info("Admin unblocked user {}", userId);
 
         return ResponseEntity.ok(Map.of("message", "User unblocked"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Find a user, scoped to the caller's tenant if tenant_id is present in JWT.
+     * Returns empty if the user doesn't exist or doesn't belong to the tenant.
+     */
+    private Optional<ArkilUser> findUserInTenant(UUID userId, Authentication auth) {
+        UUID tenantId = getTenantId(auth);
+        if (tenantId != null) {
+            return userRepository.findByIdAndTenantId(userId, tenantId);
+        }
+        return userRepository.findById(userId);
+    }
+
+    private UUID getTenantId(Authentication auth) {
+        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
+            String tenantIdStr = jwt.getClaimAsString("tenant_id");
+            if (tenantIdStr != null) {
+                try {
+                    return UUID.fromString(tenantIdStr);
+                } catch (IllegalArgumentException ignored) {}
+            }
+        }
+        return null;
     }
 
     // ─────────────────────────────────────────────────────────────────
