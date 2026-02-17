@@ -1,5 +1,6 @@
 package com.arkil.audit;
 
+import com.arkil.webhook.WebhookDispatchService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -8,9 +9,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Map;
+import java.util.UUID;
+
 /**
  * Service for recording audit log entries.
  * Uses async processing to avoid blocking auth flows.
+ * Optionally dispatches webhook events for project-scoped actions.
  */
 @Service
 @RequiredArgsConstructor
@@ -18,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuditService {
 
     private final AuditLogRepository auditLogRepository;
+    private final WebhookDispatchService webhookDispatchService;
 
     /**
      * Log an audit event asynchronously.
@@ -48,6 +54,33 @@ public class AuditService {
     }
 
     /**
+     * Log an audit event AND dispatch it as a webhook to the project's subscribers.
+     * Maps AuditEventType to webhook event names (e.g. USER_CREATED -> "user.created").
+     */
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void logEventWithWebhook(AuditEventType eventType,
+                                    String actorId,
+                                    ActorType actorType,
+                                    String targetId,
+                                    AuditOutcome outcome,
+                                    String details,
+                                    HttpServletRequest request,
+                                    UUID projectId,
+                                    Map<String, Object> webhookPayload) {
+        // Log the audit event
+        logEvent(eventType, actorId, actorType, targetId, outcome, details, request);
+
+        // Dispatch webhook if the event was successful and projectId is provided
+        if (outcome == AuditOutcome.SUCCESS && projectId != null) {
+            String webhookEvent = mapToWebhookEvent(eventType);
+            if (webhookEvent != null) {
+                webhookDispatchService.dispatchEvent(projectId, webhookEvent, webhookPayload);
+            }
+        }
+    }
+
+    /**
      * Convenience method for successful events.
      */
     public void logSuccess(AuditEventType eventType,
@@ -70,6 +103,22 @@ public class AuditService {
         logEvent(eventType, actorId, actorType, targetId, AuditOutcome.FAILURE, reason, request);
     }
 
+    /**
+     * Map audit event types to webhook event names.
+     */
+    private String mapToWebhookEvent(AuditEventType eventType) {
+        return switch (eventType) {
+            case USER_CREATED -> "user.created";
+            case USER_UPDATED -> "user.updated";
+            case USER_DELETED -> "user.deleted";
+            case USER_BLOCKED -> "user.blocked";
+            case USER_UNBLOCKED -> "user.unblocked";
+            case USER_PASSWORD_CHANGED -> "password.changed";
+            case SESSION_CREATED -> "session.created";
+            default -> null;
+        };
+    }
+
     private String extractIpAddress(HttpServletRequest request) {
         if (request == null) return null;
 
@@ -87,3 +136,4 @@ public class AuditService {
         return request.getRemoteAddr();
     }
 }
+
