@@ -216,11 +216,70 @@
             background: #555;
         }
 
+        .form-links {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 12px;
+            font-size: 0.85rem;
+        }
+
+        .form-links a {
+            color: rgba(255, 255, 255, 0.6);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .form-links a:hover {
+            color: #e94560;
+        }
+
+        .magic-link-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .magic-link-btn {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(142, 45, 226, 0.5);
+            border-radius: 10px;
+            background: transparent;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.95rem;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+        }
+
+        .magic-link-btn:hover {
+            background: rgba(142, 45, 226, 0.2);
+            transform: translateY(-1px);
+        }
+
         .footer-text {
             text-align: center;
             margin-top: 20px;
             color: rgba(255, 255, 255, 0.5);
             font-size: 0.85rem;
+        }
+
+        .footer-text a {
+            color: #e94560;
+            text-decoration: none;
+        }
+
+        .footer-text a:hover {
+            text-decoration: underline;
+        }
+
+        .powered {
+            text-align: center;
+            margin-top: 12px;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 0.8rem;
         }
 
         .hidden {
@@ -239,9 +298,14 @@
             Signing in to: <strong th:text="${clientContext.clientId}">client</strong>
         </div>
 
-        <!-- Error message -->
+        <!-- Error messages -->
         <div th:if="${param.error}" class="error-message">
-            Invalid username or password
+            <span th:if="${param.error[0] == 'oauth2'}">Social login failed. Please try again.</span>
+            <span th:if="${param.error[0] == 'disabled'}">This sign-in method is not enabled.</span>
+            <span th:if="${param.error[0] != 'oauth2' and param.error[0] != 'disabled'}">Invalid username or password.</span>
+        </div>
+        <div th:if="${param.logout}" class="warning-message">
+            You have been signed out.
         </div>
 
         <!-- Password login form -->
@@ -261,6 +325,14 @@
                 </div>
 
                 <button type="submit" class="submit-btn">Sign In</button>
+
+                <div class="form-links">
+                    <a th:href="${clientContext != null and clientContext.resolved}
+                        ? @{/forgot-password(client_id=${clientContext.clientId})}
+                        : @{/forgot-password}">Forgot password?</a>
+                    <a th:if="${clientContext != null and clientContext.resolved}"
+                       th:href="@{/signup(client_id=${clientContext.clientId})}">Create account</a>
+                </div>
             </form>
         </div>
 
@@ -301,15 +373,28 @@
                 </a>
             </div>
 
+            <!-- Magic Link section -->
+            <div th:if="${clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).MAGIC_LINK)}" class="magic-link-section">
+                <a th:href="@{/auth/magic-link(client_id=${clientContext.clientId})}" class="magic-link-btn">
+                    &#9993; Sign in with Magic Link
+                </a>
+            </div>
+
             <!-- Passkey section -->
             <div th:if="${clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).PASSKEY)}" class="passkey-section">
                 <button class="passkey-btn" onclick="handlePasskeyLogin()">
-                    🔐 Sign in with Passkey
+                    &#128274; Sign in with Passkey
                 </button>
             </div>
         </div>
 
-        <p class="footer-text">
+        <!-- Signup link for client context -->
+        <p th:if="${clientContext != null and clientContext.resolved and clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).EMAIL_PASSWORD)}" class="footer-text">
+            Don't have an account?
+            <a th:href="@{/signup(client_id=${clientContext.clientId})}">Sign up</a>
+        </p>
+
+        <p class="powered">
             Powered by Arkil Auth Server
         </p>
     </div>
