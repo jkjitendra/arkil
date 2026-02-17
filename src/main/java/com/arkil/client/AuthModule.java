@@ -30,6 +30,11 @@ public enum AuthModule {
     OAUTH2_LINKEDIN("LinkedIn", "Sign in with LinkedIn"),
 
     /**
+     * Magic link passwordless authentication.
+     */
+    MAGIC_LINK("Magic Link", "Passwordless sign-in via email link"),
+
+    /**
      * Passkey/WebAuthn authentication.
      */
     PASSKEY("Passkey", "Passwordless authentication with passkeys"),

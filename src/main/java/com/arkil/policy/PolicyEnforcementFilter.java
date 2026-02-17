@@ -34,6 +34,9 @@ public class PolicyEnforcementFilter extends OncePerRequestFilter {
             Pattern.compile("^/oauth2/authorization/apple.*"), AuthModule.OAUTH2_APPLE,
             Pattern.compile("^/oauth2/authorization/linkedin.*"), AuthModule.OAUTH2_LINKEDIN,
 
+            // Magic link routes
+            Pattern.compile("^/auth/magic-link.*"), AuthModule.MAGIC_LINK,
+
             // WebAuthn/Passkey routes
             Pattern.compile("^/webauthn/.*"), AuthModule.PASSKEY,
 

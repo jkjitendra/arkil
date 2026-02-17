@@ -24,6 +24,7 @@ import { ApiKeyDisplayModal } from '@/components/ApiKeyDisplayModal'
 import { OidcConfigCard } from '@/components/OidcConfigCard'
 import { AuthMethodsCard } from '@/components/AuthMethodsCard'
 import { OAuthProviderSetup } from '@/components/OAuthProviderSetup'
+import { WebhooksCard } from '@/components/WebhooksCard'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 export function ProjectDetailPage() {
@@ -255,6 +256,9 @@ export function ProjectDetailPage() {
       {project.oidcConfig && (
         <OidcConfigCard config={project.oidcConfig} projectName={project.name} />
       )}
+
+      {/* Webhooks */}
+      <WebhooksCard projectId={projectId} />
 
       {/* API Keys */}
       <div>
