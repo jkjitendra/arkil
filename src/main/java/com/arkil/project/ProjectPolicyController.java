@@ -261,6 +261,14 @@ public class ProjectPolicyController {
     // ─────────────────────────────────────────────────────────────────
 
     private Project verifyOwnership(UUID projectId, Authentication auth) {
+        UUID tenantId = getTenantId(auth);
+
+        if (tenantId != null) {
+            // Tenant-scoped access check
+            return projectService.getProjectForTenant(projectId, tenantId).orElse(null);
+        }
+
+        // Fallback: owner-based check
         UUID ownerId = getOwnerId(auth);
         return projectService.getProject(projectId)
                 .filter(p -> p.getOwnerId().equals(ownerId) || hasAdminRole(auth))
@@ -277,6 +285,16 @@ public class ProjectPolicyController {
         String name = auth.getName();
         try { return UUID.fromString(name); } catch (IllegalArgumentException ignored) {}
         return UUID.fromString("00000000-0000-0000-0000-000000000001");
+    }
+
+    private UUID getTenantId(Authentication auth) {
+        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
+            String tenantIdStr = jwt.getClaimAsString("tenant_id");
+            if (tenantIdStr != null) {
+                try { return UUID.fromString(tenantIdStr); } catch (IllegalArgumentException ignored) {}
+            }
+        }
+        return null;
     }
 
     private boolean hasAdminRole(Authentication auth) {
