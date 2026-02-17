@@ -1,5 +1,7 @@
 package com.arkil.user;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -31,4 +33,14 @@ public interface UserRepository extends JpaRepository<ArkilUser, UUID> {
      * Check if email is already in use (global, for developer registration).
      */
     boolean existsByEmail(String email);
+
+    /**
+     * Paginated user list scoped to a tenant (for admin user management).
+     */
+    Page<ArkilUser> findByTenantId(UUID tenantId, Pageable pageable);
+
+    /**
+     * Find a specific user scoped to a tenant.
+     */
+    Optional<ArkilUser> findByIdAndTenantId(UUID id, UUID tenantId);
 }
