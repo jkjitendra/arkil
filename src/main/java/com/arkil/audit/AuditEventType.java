@@ -32,6 +32,18 @@ public enum AuditEventType {
     USER_UPDATED,
     USER_DELETED,
     USER_PASSWORD_CHANGED,
+    USER_BLOCKED,
+    USER_UNBLOCKED,
+
+    // Session lifecycle
+    SESSION_CREATED,
+
+    // Webhook events
+    WEBHOOK_CREATED,
+    WEBHOOK_UPDATED,
+    WEBHOOK_DELETED,
+    WEBHOOK_DELIVERED,
+    WEBHOOK_DELIVERY_FAILED,
 
     // Rate limiting
     RATE_LIMIT_EXCEEDED
