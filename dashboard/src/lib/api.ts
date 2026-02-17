@@ -174,6 +174,37 @@ export interface UpsertOAuthProviderRequest {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// Webhooks
+// ─────────────────────────────────────────────────────────────────
+
+export interface Webhook {
+  id: string
+  url: string
+  events: string
+  description?: string
+  enabled: boolean
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface WebhookCreated extends Webhook {
+  signingSecret: string
+}
+
+export interface CreateWebhookRequest {
+  url: string
+  events: string[]
+  description?: string
+}
+
+export interface UpdateWebhookRequest {
+  url?: string
+  events?: string[]
+  description?: string
+  enabled?: boolean
+}
+
+// ─────────────────────────────────────────────────────────────────
 // User Profile & Tenant
 // ─────────────────────────────────────────────────────────────────
 
@@ -355,6 +386,44 @@ export function createApiClient(getToken: () => Promise<string | null>) {
     async deleteOAuthProvider(projectId: string, provider: string, environment?: string): Promise<void> {
       const params = environment ? `?environment=${encodeURIComponent(environment)}` : ''
       await fetcher(`/projects/${projectId}/oauth-providers/${provider}${params}`, { method: 'DELETE' })
+    },
+
+    // Webhooks
+    async listWebhooks(projectId: string): Promise<Webhook[]> {
+      const res = await fetcher(`/projects/${projectId}/webhooks`)
+      return res.json()
+    },
+
+    async createWebhook(projectId: string, data: CreateWebhookRequest): Promise<WebhookCreated> {
+      const res = await fetcher(`/projects/${projectId}/webhooks`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+
+    async updateWebhook(projectId: string, webhookId: string, data: UpdateWebhookRequest): Promise<Webhook> {
+      const res = await fetcher(`/projects/${projectId}/webhooks/${webhookId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+
+    async deleteWebhook(projectId: string, webhookId: string): Promise<void> {
+      await fetcher(`/projects/${projectId}/webhooks/${webhookId}`, { method: 'DELETE' })
+    },
+
+    async testWebhook(projectId: string, webhookId: string): Promise<{ success: boolean; message: string }> {
+      const res = await fetcher(`/projects/${projectId}/webhooks/${webhookId}/test`, {
+        method: 'POST',
+      })
+      return res.json()
+    },
+
+    async listWebhookEvents(projectId: string): Promise<string[]> {
+      const res = await fetcher(`/projects/${projectId}/webhooks/events`)
+      return res.json()
     },
 
     // User Profile
