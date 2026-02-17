@@ -29,8 +29,12 @@ public class ProjectService {
      */
     @Transactional
     public ProjectWithKeys createProject(CreateProjectRequest request, UUID ownerId, UUID tenantId) {
-        // Check name uniqueness for this owner
-        if (projectRepository.existsByNameAndOwnerIdAndDeletedAtIsNull(request.name(), ownerId)) {
+        // Check name uniqueness within tenant (or fallback to owner if no tenant)
+        if (tenantId != null) {
+            if (projectRepository.existsByNameAndTenantIdAndDeletedAtIsNull(request.name(), tenantId)) {
+                throw new IllegalArgumentException("Project name already exists: " + request.name());
+            }
+        } else if (projectRepository.existsByNameAndOwnerIdAndDeletedAtIsNull(request.name(), ownerId)) {
             throw new IllegalArgumentException("Project name already exists: " + request.name());
         }
 
@@ -86,6 +90,13 @@ public class ProjectService {
     }
 
     /**
+     * Get project by ID, scoped to a tenant. Returns empty if project doesn't belong to tenant.
+     */
+    public Optional<Project> getProjectForTenant(UUID projectId, UUID tenantId) {
+        return projectRepository.findByIdAndTenantId(projectId, tenantId);
+    }
+
+    /**
      * Get project by slug.
      */
     public Optional<Project> getProjectBySlug(String slug) {
@@ -97,6 +108,13 @@ public class ProjectService {
      */
     public List<Project> listProjects(UUID ownerId) {
         return projectRepository.findByOwnerIdAndDeletedAtIsNull(ownerId);
+    }
+
+    /**
+     * List active projects scoped to a tenant.
+     */
+    public List<Project> listProjectsByTenant(UUID tenantId) {
+        return projectRepository.findByTenantIdAndDeletedAtIsNull(tenantId);
     }
 
     /**
@@ -187,6 +205,13 @@ public class ProjectService {
      */
     public List<Project> listDeletedProjects(UUID ownerId) {
         return projectRepository.findByOwnerIdAndDeletedAtIsNotNull(ownerId);
+    }
+
+    /**
+     * List deleted projects scoped to a tenant (for trash view).
+     */
+    public List<Project> listDeletedProjectsByTenant(UUID tenantId) {
+        return projectRepository.findByTenantIdAndDeletedAtIsNotNull(tenantId);
     }
 
     // ─────────────────────────────────────────────────────────────────
