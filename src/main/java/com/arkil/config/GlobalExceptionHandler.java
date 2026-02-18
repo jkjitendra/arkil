@@ -1,16 +1,21 @@
 package com.arkil.config;
 
+import com.arkil.security.RateLimitExceededException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -114,6 +119,86 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle rate limit exceeded — returns 429 with Retry-After header.
+     */
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<Map<String, Object>> handleRateLimitExceeded(RateLimitExceededException ex) {
+        log.warn("Rate limit exceeded: {}", ex.getMessage());
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Retry-After", String.valueOf(ex.getRetryAfterSeconds()));
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .headers(headers)
+                .body(Map.of(
+                        "error", "rate_limit_exceeded",
+                        "message", ex.getMessage(),
+                        "retryAfter", ex.getRetryAfterSeconds(),
+                        "timestamp", Instant.now().toString()
+                ));
+    }
+
+    /**
+     * Handle OAuth2 authentication errors (e.g., invalid token, expired token).
+     */
+    @ExceptionHandler(OAuth2AuthenticationException.class)
+    public ResponseEntity<Map<String, Object>> handleOAuth2AuthenticationException(OAuth2AuthenticationException ex) {
+        log.warn("OAuth2 authentication error: {}", ex.getMessage());
+
+        String errorCode = ex.getError() != null ? ex.getError().getErrorCode() : "oauth_error";
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "error", "oauth_error",
+                "message", ex.getMessage() != null ? ex.getMessage() : "OAuth2 authentication failed",
+                "oauthErrorCode", errorCode,
+                "timestamp", Instant.now().toString()
+        ));
+    }
+
+    /**
+     * Handle OAuth2 authorization errors (e.g., provider unavailable, bad config).
+     */
+    @ExceptionHandler(OAuth2AuthorizationException.class)
+    public ResponseEntity<Map<String, Object>> handleOAuth2AuthorizationException(OAuth2AuthorizationException ex) {
+        log.error("OAuth2 provider error: {}", ex.getMessage());
+
+        String errorCode = ex.getError() != null ? ex.getError().getErrorCode() : "oauth_provider_error";
+
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of(
+                "error", "oauth_provider_error",
+                "message", "OAuth2 provider error. Please check your provider configuration.",
+                "oauthErrorCode", errorCode,
+                "timestamp", Instant.now().toString()
+        ));
+    }
+
+    /**
+     * Handle Spring Security's AccessDeniedException for consistent JSON responses.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDenied(AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "error", "access_denied",
+                "message", ex.getMessage() != null ? ex.getMessage() : "Access denied",
+                "timestamp", Instant.now().toString()
+        ));
+    }
+
+    /**
+     * Handle unsupported HTTP methods.
+     */
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(Map.of(
+                "error", "method_not_allowed",
+                "message", "HTTP method " + ex.getMethod() + " is not supported for this endpoint",
+                "timestamp", Instant.now().toString()
+        ));
+    }
+
+    /**
      * Catch-all for unexpected exceptions.
      * Logs full stack trace but returns generic message to client.
      */
@@ -128,3 +213,4 @@ public class GlobalExceptionHandler {
         ));
     }
 }
+
