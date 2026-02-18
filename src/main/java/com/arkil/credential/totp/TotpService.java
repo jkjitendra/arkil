@@ -3,6 +3,7 @@ package com.arkil.credential.totp;
 import com.arkil.audit.ActorType;
 import com.arkil.audit.AuditEventType;
 import com.arkil.audit.AuditService;
+import com.arkil.security.SecretEncryptionService;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,6 +41,7 @@ public class TotpService {
     private final TotpCredentialRepository totpCredentialRepository;
     private final UserRepository userRepository;
     private final AuditService auditService;
+    private final SecretEncryptionService encryptionService;
 
     /**
      * Generate a new TOTP secret for enrollment.
@@ -61,7 +63,7 @@ public class TotpService {
                         .user(user)
                         .build());
 
-        credential.setSecretEncrypted(secretBase32); // TODO: Encrypt in production
+        credential.setSecretEncrypted(encryptionService.encrypt(secretBase32));
         credential.setEnabled(false);
         totpCredentialRepository.save(credential);
 
@@ -88,7 +90,7 @@ public class TotpService {
             throw new IllegalStateException("TOTP already enabled");
         }
 
-        boolean valid = verifyCode(credential.getSecretEncrypted(), code,
+        boolean valid = verifyCode(encryptionService.decrypt(credential.getSecretEncrypted()), code,
                 credential.getAlgorithm(), credential.getDigits(), credential.getPeriod());
 
         if (valid) {
@@ -120,7 +122,7 @@ public class TotpService {
             return false;
         }
 
-        boolean valid = verifyCode(credential.getSecretEncrypted(), code,
+        boolean valid = verifyCode(encryptionService.decrypt(credential.getSecretEncrypted()), code,
                 credential.getAlgorithm(), credential.getDigits(), credential.getPeriod());
 
         if (valid) {
@@ -144,6 +146,17 @@ public class TotpService {
         return totpCredentialRepository.findByUserId(userId)
                 .map(TotpCredential::getEnabled)
                 .orElse(false);
+    }
+
+    /**
+     * Remove TOTP credential for a user.
+     */
+    @Transactional
+    public void remove(UUID userId) {
+        totpCredentialRepository.deleteByUserId(userId);
+        auditService.logSuccess(AuditEventType.MFA_ENROLLED, userId.toString(),
+                ActorType.USER, "totp_removed", getCurrentRequest());
+        log.info("TOTP credential removed for user: {}", userId);
     }
 
     private boolean verifyCode(String secretBase32, String code, String algorithm, int digits, int period) {

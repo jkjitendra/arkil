@@ -3,6 +3,7 @@ package com.arkil.project;
 import com.arkil.client.AuthModule;
 import com.arkil.client.ClientAuthPolicy;
 import com.arkil.client.ClientAuthPolicyRepository;
+import com.arkil.security.SecretEncryptionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +40,7 @@ public class ProjectPolicyController {
     private final ClientAuthPolicyRepository policyRepository;
     private final ProjectOAuthProviderRepository providerRepository;
     private final RegisteredClientBridgeService bridgeService;
+    private final SecretEncryptionService encryptionService;
 
     // ─────────────────────────────────────────────────────────────────
     // Auth Methods (module toggles)
@@ -198,7 +200,7 @@ public class ProjectPolicyController {
                         .build());
 
         provider.setClientId(request.getClientId());
-        provider.setClientSecretEncrypted(request.getClientSecret()); // TODO: encrypt at rest
+        provider.setClientSecretEncrypted(encryptionService.encrypt(request.getClientSecret()));
         provider.setScopes(request.getScopes() != null ? request.getScopes() : getDefaultScopes(request.getProvider()));
         provider.setEnabled(request.getEnabled() != null ? request.getEnabled() : true);
 

@@ -6,6 +6,7 @@ import com.arkil.project.Project;
 import com.arkil.project.ProjectOAuthProvider;
 import com.arkil.project.ProjectOAuthProviderRepository;
 import com.arkil.project.ProjectRepository;
+import com.arkil.security.SecretEncryptionService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +38,7 @@ public class DynamicClientRegistrationRepository implements ClientRegistrationRe
     private final ProjectOAuthProviderRepository providerRepository;
     private final ProjectRepository projectRepository;
     private final ClientContextHolder clientContextHolder;
+    private final SecretEncryptionService encryptionService;
 
     @Value("${arkil.oauth.google.client-id:}")
     private String googleClientId;
@@ -56,10 +58,12 @@ public class DynamicClientRegistrationRepository implements ClientRegistrationRe
     public DynamicClientRegistrationRepository(
             ProjectOAuthProviderRepository providerRepository,
             ProjectRepository projectRepository,
-            ClientContextHolder clientContextHolder) {
+            ClientContextHolder clientContextHolder,
+            SecretEncryptionService encryptionService) {
         this.providerRepository = providerRepository;
         this.projectRepository = projectRepository;
         this.clientContextHolder = clientContextHolder;
+        this.encryptionService = encryptionService;
     }
 
     @PostConstruct
@@ -169,7 +173,7 @@ public class DynamicClientRegistrationRepository implements ClientRegistrationRe
 
         var builder = ClientRegistration.withRegistrationId(provider)
                 .clientId(oauthProvider.getClientId())
-                .clientSecret(oauthProvider.getClientSecretEncrypted()) // TODO: decrypt
+                .clientSecret(encryptionService.decrypt(oauthProvider.getClientSecretEncrypted()))
                 .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
                 .redirectUri("{baseUrl}/login/oauth2/code/{registrationId}")

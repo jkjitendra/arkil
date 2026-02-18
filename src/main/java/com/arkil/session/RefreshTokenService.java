@@ -1,5 +1,8 @@
 package com.arkil.session;
 
+import com.arkil.audit.ActorType;
+import com.arkil.audit.AuditEventType;
+import com.arkil.audit.AuditService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +37,7 @@ import java.util.UUID;
 public class RefreshTokenService {
 
     private final RefreshTokenRepository tokenRepository;
+    private final AuditService auditService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Value("${arkil.token.refresh.expiry-days:30}")
@@ -91,8 +95,12 @@ public class RefreshTokenService {
 
                 log.warn("Revoked {} tokens in family {} due to reuse", revoked, token.getFamilyId());
 
-                // TODO: Send security alert email to user
-                // TODO: Log security event for audit
+                // Log security event for audit
+                auditService.logFailure(AuditEventType.AUTH_TOKEN_REVOKED,
+                        token.getUserId().toString(), ActorType.USER,
+                        token.getFamilyId().toString(),
+                        "Refresh token reuse detected — revoked " + revoked + " tokens in family",
+                        null);
             }
             return Optional.empty();
         }
