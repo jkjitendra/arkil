@@ -70,7 +70,9 @@ public class SecurityConfig {
                 // Enable per-project CORS
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/login", "/error", "/actuator/health", "/h2-console/**").permitAll()
+                        .requestMatchers("/login", "/signup", "/forgot-password", "/reset-password").permitAll()
+                        .requestMatchers("/auth/magic-link", "/auth/magic-link/verify", "/auth/verify-email").permitAll()
+                        .requestMatchers("/error", "/actuator/health", "/h2-console/**").permitAll()
                         .requestMatchers("/api/v1/meta/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/webjars/**", "/css/**", "/js/**", "/images/**", "/favicon.ico").permitAll()
@@ -80,8 +82,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/register").permitAll()
                         .requestMatchers("/api/v1/auth/forgot-password", "/api/v1/auth/reset-password").permitAll()
                         .requestMatchers("/api/v1/auth/verify-email", "/api/v1/auth/magic-link").permitAll()
-                        // Session creation endpoint (public)
+                        // Session endpoints (public — auth is via cookies/tokens, not Spring Security session)
                         .requestMatchers("/api/v1/sessions").permitAll()
+                        .requestMatchers("/api/v1/sessions/refresh").permitAll()
+                        .requestMatchers("/api/v1/sessions/current").permitAll()
                         // Public project config endpoint (for client-side SDK init)
                         .requestMatchers("/api/v1/public/**").permitAll()
                         // OAuth2 social login callback
