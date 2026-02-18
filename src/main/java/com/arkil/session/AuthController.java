@@ -1,8 +1,14 @@
 package com.arkil.session;
 
+import com.arkil.credential.password.PasswordCredential;
+import com.arkil.credential.password.PasswordCredentialRepository;
+import com.arkil.email.EmailToken;
 import com.arkil.email.EmailTokenService;
 import com.arkil.security.RateLimitBucket;
 import com.arkil.security.RateLimiterService;
+import com.arkil.tenant.TenantContext;
+import com.arkil.user.ArkilUser;
+import com.arkil.user.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,9 +20,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Auth API controller for password reset, email verification, and magic links.
@@ -31,6 +40,9 @@ public class AuthController {
 
     private final EmailTokenService emailTokenService;
     private final RateLimiterService rateLimiterService;
+    private final UserRepository userRepository;
+    private final PasswordCredentialRepository passwordCredentialRepository;
+    private final PasswordEncoder passwordEncoder;
 
     // ─────────────────────────────────────────────────────────────────
     // Password Reset
@@ -71,12 +83,46 @@ public class AuthController {
 
     @PostMapping("/reset-password")
     @Operation(summary = "Reset password with token")
-    public ResponseEntity<Map<String, String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
-        // TODO: Implement password reset with token
-        // This requires PasswordCredentialService to update the password
+    public ResponseEntity<Map<String, Object>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        Optional<EmailToken> tokenOpt = emailTokenService.verifyToken(
+                request.getToken(), EmailToken.TokenType.PASSWORD_RESET);
 
+        if (tokenOpt.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "invalid_token",
+                    "message", "Invalid or expired reset token. Please request a new one."
+            ));
+        }
+
+        EmailToken emailToken = tokenOpt.get();
+        ArkilUser user = userRepository.findById(emailToken.getUserId()).orElse(null);
+        if (user == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "user_not_found",
+                    "message", "User not found."
+            ));
+        }
+
+        // Update or create password credential
+        Optional<PasswordCredential> credOpt = passwordCredentialRepository.findByUser_Id(user.getId());
+        if (credOpt.isPresent()) {
+            PasswordCredential cred = credOpt.get();
+            cred.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+            passwordCredentialRepository.save(cred);
+        } else {
+            passwordCredentialRepository.save(PasswordCredential.builder()
+                    .user(user)
+                    .passwordHash(passwordEncoder.encode(request.getNewPassword()))
+                    .algorithm("bcrypt")
+                    .build());
+        }
+
+        log.info("Password reset via API for user: {}", user.getEmail());
         return ResponseEntity.ok(Map.of(
-                "message", "Password reset functionality coming soon"
+                "success", true,
+                "message", "Password has been reset successfully."
         ));
     }
 
@@ -105,9 +151,18 @@ public class AuthController {
     @PostMapping("/resend-verification")
     @Operation(summary = "Resend email verification")
     public ResponseEntity<Map<String, String>> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
-        // TODO: Look up user by email and send verification
-        // Similar to forgot-password, don't reveal if user exists
+        UUID tenantId = TenantContext.getTenantId();
+        Optional<ArkilUser> userOpt = tenantId != null
+                ? userRepository.findByTenantIdAndEmail(tenantId, request.getEmail())
+                : userRepository.findByEmail(request.getEmail());
 
+        userOpt.ifPresent(user -> {
+            if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+                emailTokenService.sendVerificationEmail(user.getId());
+            }
+        });
+
+        // Always return success to prevent email enumeration
         return ResponseEntity.ok(Map.of(
                 "message", "If an account exists with that email, a verification link has been sent."
         ));
@@ -128,14 +183,34 @@ public class AuthController {
     }
 
     @GetMapping("/magic-link")
-    @Operation(summary = "Verify magic link and create session")
+    @Operation(summary = "Verify magic link token")
     public ResponseEntity<Map<String, Object>> verifyMagicLink(@RequestParam String token) {
-        // TODO: Verify magic link token and create session
-        // This will need to integrate with session management
+        Optional<EmailToken> tokenOpt = emailTokenService.verifyToken(token, EmailToken.TokenType.MAGIC_LINK);
 
+        if (tokenOpt.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "invalid_token",
+                    "message", "Invalid or expired magic link."
+            ));
+        }
+
+        EmailToken emailToken = tokenOpt.get();
+        ArkilUser user = userRepository.findById(emailToken.getUserId()).orElse(null);
+        if (user == null || !user.getEnabled()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "user_not_found",
+                    "message", "Account not found or disabled."
+            ));
+        }
+
+        log.info("Magic link verified via API for user: {}", user.getEmail());
         return ResponseEntity.ok(Map.of(
-                "success", false,
-                "message", "Magic link authentication coming soon"
+                "success", true,
+                "userId", user.getId().toString(),
+                "email", user.getEmail(),
+                "message", "Magic link verified. Use the OIDC flow to obtain tokens."
         ));
     }
 
