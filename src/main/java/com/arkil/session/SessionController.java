@@ -1,28 +1,46 @@
 package com.arkil.session;
 
+import com.arkil.audit.ActorType;
+import com.arkil.audit.AuditEventType;
+import com.arkil.audit.AuditService;
+import com.arkil.credential.password.PasswordCredential;
+import com.arkil.credential.password.PasswordCredentialRepository;
+import com.arkil.credential.totp.TotpService;
+import com.arkil.email.EmailToken;
+import com.arkil.email.EmailTokenService;
+import com.arkil.user.ArkilUser;
+import com.arkil.user.UserRepository;
+import com.nimbusds.jose.jwk.source.JWKSource;
+import com.nimbusds.jose.proc.SecurityContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
+import org.springframework.security.oauth2.jwt.*;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Session API controller.
  * Part of the Session/UX API surface (Surface B).
- * 
+ *
  * Handles session creation (login), refresh, and logout.
  * Access tokens are returned in response body.
  * Refresh tokens are set as HttpOnly cookies.
@@ -30,11 +48,17 @@ import java.util.Optional;
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/sessions")
-@RequiredArgsConstructor
 @Tag(name = "Sessions", description = "Session management (login, refresh, logout)")
 public class SessionController {
 
     private final RefreshTokenService refreshTokenService;
+    private final UserRepository userRepository;
+    private final PasswordCredentialRepository passwordCredentialRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final EmailTokenService emailTokenService;
+    private final TotpService totpService;
+    private final AuditService auditService;
+    private final JwtEncoder jwtEncoder;
 
     @Value("${arkil.session.cookie.same-site:None}")
     private String cookieSameSite;
@@ -45,30 +69,145 @@ public class SessionController {
     @Value("${arkil.token.refresh.expiry-days:30}")
     private int refreshTokenExpiryDays;
 
+    @Value("${arkil.token.access.expiry-minutes:15}")
+    private int accessTokenExpiryMinutes;
+
     private static final String REFRESH_TOKEN_COOKIE = "arkil_refresh_token";
+
+    public SessionController(RefreshTokenService refreshTokenService,
+                             UserRepository userRepository,
+                             PasswordCredentialRepository passwordCredentialRepository,
+                             PasswordEncoder passwordEncoder,
+                             EmailTokenService emailTokenService,
+                             TotpService totpService,
+                             AuditService auditService,
+                             JWKSource<SecurityContext> jwkSource) {
+        this.refreshTokenService = refreshTokenService;
+        this.userRepository = userRepository;
+        this.passwordCredentialRepository = passwordCredentialRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.emailTokenService = emailTokenService;
+        this.totpService = totpService;
+        this.auditService = auditService;
+        this.jwtEncoder = new NimbusJwtEncoder(jwkSource);
+    }
 
     // ─────────────────────────────────────────────────────────────────
     // Session Creation (Login)
     // ─────────────────────────────────────────────────────────────────
 
     @PostMapping
-    @Operation(summary = "Create session (login with password or passkey)")
+    @Operation(summary = "Create session (login with password or magic link token)")
     public ResponseEntity<Map<String, Object>> createSession(
             @Valid @RequestBody CreateSessionRequest request,
+            HttpServletRequest httpRequest,
             HttpServletResponse response) {
 
         log.info("Session creation request for identifier: {}", request.getIdentifier());
 
-        // TODO: Integrate with authentication providers
-        // 1. Look up user by identifier (email/username)
-        // 2. Validate credential (password or passkey assertion)
-        // 3. Check MFA requirements
-        // 4. Generate tokens via RefreshTokenService.issueRefreshToken()
+        // 1. Look up user by identifier (email or username)
+        ArkilUser user = resolveUser(request.getIdentifier());
+        if (user == null) {
+            auditService.logFailure(AuditEventType.AUTH_LOGIN_FAILURE, request.getIdentifier(),
+                    ActorType.USER, null, "User not found", httpRequest);
+            return ResponseEntity.status(401).body(Map.of(
+                    "error", "invalid_credentials",
+                    "message", "Invalid credentials"
+            ));
+        }
 
-        // For now, return mock response structure
+        if (!user.getEnabled()) {
+            auditService.logFailure(AuditEventType.AUTH_LOGIN_FAILURE, user.getId().toString(),
+                    ActorType.USER, null, "Account disabled", httpRequest);
+            return ResponseEntity.status(403).body(Map.of(
+                    "error", "account_disabled",
+                    "message", "Account is disabled"
+            ));
+        }
+
+        // 2. Validate credential
+        if (request.getMagicLinkToken() != null) {
+            // Magic link authentication
+            Optional<EmailToken> tokenOpt = emailTokenService.verifyToken(
+                    request.getMagicLinkToken(), EmailToken.TokenType.MAGIC_LINK);
+            if (tokenOpt.isEmpty() || !tokenOpt.get().getUserId().equals(user.getId())) {
+                auditService.logFailure(AuditEventType.AUTH_LOGIN_FAILURE, user.getId().toString(),
+                        ActorType.USER, null, "Invalid magic link token", httpRequest);
+                return ResponseEntity.status(401).body(Map.of(
+                        "error", "invalid_token",
+                        "message", "Invalid or expired magic link"
+                ));
+            }
+        } else if (request.getPassword() != null) {
+            // Password authentication
+            Optional<PasswordCredential> credOpt = passwordCredentialRepository.findByUser_Id(user.getId());
+            if (credOpt.isEmpty() || !passwordEncoder.matches(request.getPassword(), credOpt.get().getPasswordHash())) {
+                auditService.logFailure(AuditEventType.AUTH_LOGIN_FAILURE, user.getId().toString(),
+                        ActorType.USER, null, "Invalid password", httpRequest);
+                return ResponseEntity.status(401).body(Map.of(
+                        "error", "invalid_credentials",
+                        "message", "Invalid credentials"
+                ));
+            }
+        } else {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "missing_credential",
+                    "message", "Password or magic link token is required"
+            ));
+        }
+
+        // 3. Check MFA requirements
+        if (totpService.isEnabled(user.getId())) {
+            if (request.getTotpCode() == null || request.getTotpCode().isBlank()) {
+                return ResponseEntity.status(403).body(Map.of(
+                        "error", "mfa_required",
+                        "message", "TOTP code is required",
+                        "mfaType", "totp"
+                ));
+            }
+            if (!totpService.verify(user.getId(), request.getTotpCode())) {
+                auditService.logFailure(AuditEventType.MFA_FAILED, user.getId().toString(),
+                        ActorType.USER, "totp", "Invalid TOTP code", httpRequest);
+                return ResponseEntity.status(401).body(Map.of(
+                        "error", "invalid_totp",
+                        "message", "Invalid TOTP code"
+                ));
+            }
+        }
+
+        // 4. Generate tokens
+        String clientId = request.getClientId() != null ? request.getClientId() : "default";
+        RefreshTokenService.TokenPair tokenPair = refreshTokenService.issueRefreshToken(
+                user.getId(), clientId,
+                httpRequest.getHeader("User-Agent"),
+                extractClientIp(httpRequest));
+
+        // Set refresh token as HttpOnly cookie
+        int maxAgeSeconds = refreshTokenExpiryDays * 24 * 60 * 60;
+        setRefreshTokenCookie(response, tokenPair.plaintext(), maxAgeSeconds);
+
+        // Generate JWT access token
+        String accessToken = mintAccessToken(user, clientId);
+
+        // Update last login
+        user.setLastLoginAt(Instant.now());
+        userRepository.save(user);
+
+        auditService.logSuccess(AuditEventType.AUTH_LOGIN_SUCCESS, user.getId().toString(),
+                ActorType.USER, clientId, httpRequest);
+
+        log.info("Session created for user: {}", user.getEmail());
+
         return ResponseEntity.ok(Map.of(
-                "message", "Session creation via API coming soon",
-                "note", "Use OIDC /oauth2/authorize flow for now"
+                "success", true,
+                "accessToken", accessToken,
+                "tokenType", "Bearer",
+                "expiresIn", accessTokenExpiryMinutes * 60,
+                "user", Map.of(
+                        "id", user.getId().toString(),
+                        "email", user.getEmail(),
+                        "displayName", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername()
+                )
         ));
     }
 
@@ -111,14 +250,23 @@ public class SessionController {
         int maxAgeSeconds = refreshTokenExpiryDays * 24 * 60 * 60;
         setRefreshTokenCookie(response, newTokenPair.plaintext(), maxAgeSeconds);
 
-        // TODO: Generate new access token (JWT)
-        // For now, just return success with token ID
+        // Look up user to generate new access token
+        ArkilUser user = userRepository.findById(newTokenPair.entity().getUserId()).orElse(null);
+        if (user == null || !user.getEnabled()) {
+            clearRefreshTokenCookie(response);
+            return ResponseEntity.status(401).body(Map.of(
+                    "error", "user_not_found",
+                    "message", "User account not found or disabled"
+            ));
+        }
+
+        String accessToken = mintAccessToken(user, newTokenPair.entity().getClientId());
+
         return ResponseEntity.ok(Map.of(
                 "success", true,
-                "message", "Token refreshed successfully",
-                "tokenId", newTokenPair.entity().getId().toString(),
-                "expiresAt", newTokenPair.entity().getExpiresAt().toString()
-                // TODO: Add "accessToken" field with actual JWT
+                "accessToken", accessToken,
+                "tokenType", "Bearer",
+                "expiresIn", accessTokenExpiryMinutes * 60
         ));
     }
 
@@ -130,17 +278,26 @@ public class SessionController {
     @Operation(summary = "Logout (delete current session)")
     public ResponseEntity<Map<String, String>> logout(
             Authentication authentication,
+            HttpServletRequest request,
             HttpServletResponse response) {
 
-        if (authentication != null) {
-            log.info("User {} logging out", authentication.getName());
+        // Revoke refresh token in database
+        String refreshToken = getRefreshTokenFromCookie(request);
+        if (refreshToken != null) {
+            refreshTokenService.revokeToken(refreshToken);
         }
 
         // Clear refresh token cookie
         clearRefreshTokenCookie(response);
 
-        // TODO: Revoke tokens in database
-        // TODO: Record logout in audit log
+        // Audit log
+        String actorId = authentication != null ? authentication.getName() : "anonymous";
+        auditService.logSuccess(AuditEventType.AUTH_LOGOUT, actorId,
+                ActorType.USER, null, request);
+
+        if (authentication != null) {
+            log.info("User {} logged out", authentication.getName());
+        }
 
         return ResponseEntity.ok(Map.of(
                 "message", "Logged out successfully"
@@ -148,8 +305,57 @@ public class SessionController {
     }
 
     // ─────────────────────────────────────────────────────────────────
+    // JWT Minting
+    // ─────────────────────────────────────────────────────────────────
+
+    private String mintAccessToken(ArkilUser user, String clientId) {
+        Instant now = Instant.now();
+        Instant expiry = now.plus(accessTokenExpiryMinutes, ChronoUnit.MINUTES);
+
+        Set<String> roles = user.getRoles().stream()
+                .map(r -> r.getName())
+                .collect(Collectors.toSet());
+
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer("http://localhost:8080")
+                .subject(user.getId().toString())
+                .audience(java.util.List.of(clientId))
+                .issuedAt(now)
+                .expiresAt(expiry)
+                .claim("email", user.getEmail())
+                .claim("display_name", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername())
+                .claim("tenant_id", user.getTenant().getId().toString())
+                .claim("roles", roles)
+                .build();
+
+        JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).build();
+        return jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
     // Helper Methods
     // ─────────────────────────────────────────────────────────────────
+
+    private ArkilUser resolveUser(String identifier) {
+        // Try email first, then username
+        Optional<ArkilUser> userOpt = userRepository.findByEmail(identifier);
+        if (userOpt.isPresent()) {
+            return userOpt.get();
+        }
+        return userRepository.findByUsername(identifier).orElse(null);
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty()) {
+            return xRealIp;
+        }
+        return request.getRemoteAddr();
+    }
 
     private String getRefreshTokenFromCookie(HttpServletRequest request) {
         if (request.getCookies() == null) {
@@ -169,7 +375,6 @@ public class SessionController {
         cookie.setSecure(Boolean.parseBoolean(cookieSecure));
         cookie.setPath("/api/v1/sessions");
         cookie.setMaxAge(maxAgeSeconds);
-        // SameSite attribute set via response header (not directly supported in Cookie)
         response.addCookie(cookie);
 
         // Add SameSite via Set-Cookie header override
@@ -204,11 +409,11 @@ public class SessionController {
         // For password auth
         private String password;
 
-        // For passkey auth
-        private String passkeyAssertion;
-
         // For magic link auth
         private String magicLinkToken;
+
+        // For TOTP MFA (required if TOTP is enabled for the user)
+        private String totpCode;
 
         // Client context
         private String clientId;
