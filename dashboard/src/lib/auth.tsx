@@ -13,6 +13,7 @@ interface AuthContextType {
   isLoading: boolean
   isAuthenticated: boolean
   login: () => Promise<void>
+  loginWithSocial: (provider: string) => Promise<void>
   logout: () => Promise<void>
   getAccessToken: () => Promise<string | null>
 }
@@ -70,6 +71,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const loginWithSocial = useCallback(async (provider: string) => {
+    try {
+      const signinRequest = await (
+        userManager as UserManager & {
+          _client: {
+            createSigninRequest: () => Promise<{ url: string }>
+          }
+        }
+      )._client.createSigninRequest()
+
+      const socialUrl = new URL(`/auth/social/${provider}`, authConfig.authority)
+      socialUrl.searchParams.set('return_to', signinRequest.url)
+      window.location.assign(socialUrl.toString())
+    } catch (error) {
+      console.error('Social login failed:', error)
+      throw error
+    }
+  }, [])
+
   const logout = useCallback(async () => {
     try {
       await userManager.signoutRedirect()
@@ -102,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user && !user.expired,
         login,
+        loginWithSocial,
         logout,
         getAccessToken,
       }}
