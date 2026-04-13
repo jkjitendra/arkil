@@ -167,7 +167,7 @@ export interface OAuthProviderDto {
 export interface UpsertOAuthProviderRequest {
   provider: string
   clientId: string
-  clientSecret: string
+  clientSecret?: string
   scopes?: string
   environment?: string
   enabled?: boolean

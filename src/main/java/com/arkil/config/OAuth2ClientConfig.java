@@ -1,5 +1,6 @@
 package com.arkil.config;
 
+import com.arkil.auth.AuthSessionAttributes;
 import com.arkil.audit.ActorType;
 import com.arkil.audit.AuditEventType;
 import com.arkil.audit.AuditService;
@@ -32,6 +33,7 @@ import org.springframework.security.web.authentication.AuthenticationFailureHand
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler;
 
+import jakarta.servlet.http.HttpSession;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -157,6 +159,10 @@ public class OAuth2ClientConfig {
 
         return (request, response, authentication) -> {
             String username = authentication.getName();
+            HttpSession session = request.getSession(false);
+            String returnTo = session != null
+                    ? (String) session.getAttribute(AuthSessionAttributes.SOCIAL_LOGIN_RETURN_TO)
+                    : null;
 
             if (clientContextHolder.hasContext()) {
                 ClientContext context = clientContextHolder.getContext();
@@ -165,6 +171,11 @@ public class OAuth2ClientConfig {
             }
 
             log.info("OAuth2 login successful for user: {}", username);
+            if (returnTo != null) {
+                session.removeAttribute(AuthSessionAttributes.SOCIAL_LOGIN_RETURN_TO);
+                response.sendRedirect(returnTo);
+                return;
+            }
             handler.onAuthenticationSuccess(request, response, authentication);
         };
     }
@@ -172,6 +183,11 @@ public class OAuth2ClientConfig {
     @Bean
     public AuthenticationFailureHandler oauth2FailureHandler() {
         return (request, response, exception) -> {
+            HttpSession session = request.getSession(false);
+            if (session != null) {
+                session.removeAttribute(AuthSessionAttributes.SOCIAL_LOGIN_RETURN_TO);
+            }
+
             String clientId = clientContextHolder.hasContext() ?
                     clientContextHolder.getContext().getClientId() : "unknown";
 

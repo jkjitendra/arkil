@@ -1,5 +1,6 @@
 package com.arkil.project;
 
+import com.arkil.security.SecretEncryptionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,8 @@ class ProjectApiIntegrationTests {
 
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
+    @Autowired private ProjectOAuthProviderRepository providerRepository;
+    @Autowired private SecretEncryptionService encryptionService;
 
     // The demo bootstrap creates a tenant + admin user; grab their IDs
     private static String createdProjectId;
@@ -181,6 +184,57 @@ class ProjectApiIntegrationTests {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.apiKey.name").value("Integration Test Key"))
                 .andExpect(jsonPath("$.secretKey").isString());
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("POST /api/v1/projects/{id}/oauth-providers — update preserves existing secret when omitted")
+    void updateOAuthProviderPreservesExistingSecret() throws Exception {
+        Assumptions.assumeTrue(createdProjectId != null);
+
+        mockMvc.perform(post("/api/v1/projects/{id}/oauth-providers", createdProjectId)
+                        .with(jwt().jwt(jwt -> jwt
+                                .subject("00000000-0000-0000-0000-000000000001")
+                                .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
+                                .claim("scope", "arkil:admin")
+                        ))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "provider", "google",
+                                "clientId", "google-client-id",
+                                "clientSecret", "super-secret-value"
+                        ))))
+                .andExpect(status().isOk());
+
+        ProjectOAuthProvider created = providerRepository
+                .findByProjectIdAndProviderAndEnvironment(
+                        java.util.UUID.fromString(createdProjectId), "google", Project.Environment.DEVELOPMENT)
+                .orElseThrow();
+
+        String encryptedSecret = created.getClientSecretEncrypted();
+        Assertions.assertEquals("super-secret-value", encryptionService.decrypt(encryptedSecret));
+
+        mockMvc.perform(post("/api/v1/projects/{id}/oauth-providers", createdProjectId)
+                        .with(jwt().jwt(jwt -> jwt
+                                .subject("00000000-0000-0000-0000-000000000001")
+                                .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
+                                .claim("scope", "arkil:admin")
+                        ))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "provider", "google",
+                                "clientId", "updated-google-client-id"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.clientId").value("updated-google-client-id"));
+
+        ProjectOAuthProvider updated = providerRepository
+                .findByProjectIdAndProviderAndEnvironment(
+                        java.util.UUID.fromString(createdProjectId), "google", Project.Environment.DEVELOPMENT)
+                .orElseThrow();
+
+        Assertions.assertEquals(encryptedSecret, updated.getClientSecretEncrypted());
+        Assertions.assertEquals("super-secret-value", encryptionService.decrypt(updated.getClientSecretEncrypted()));
     }
 
     // ─────────────────────────────────────────────────────────────────

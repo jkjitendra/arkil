@@ -41,7 +41,7 @@ const SOCIAL_PROVIDERS = [
 interface SocialLoginButtonsProps {
   mode: 'signin' | 'signup'
   disabled?: boolean
-  onSocialLogin?: (provider: string) => void
+  onSocialLogin?: (provider: string) => void | Promise<void>
 }
 
 export function SocialLoginButtons({ mode, disabled, onSocialLogin }: SocialLoginButtonsProps) {
@@ -58,7 +58,7 @@ export function SocialLoginButtons({ mode, disabled, onSocialLogin }: SocialLogi
 
   const handleClick = (providerId: string) => {
     if (onSocialLogin) {
-      onSocialLogin(providerId)
+      void onSocialLogin(providerId)
     } else {
       // Default: redirect to the OAuth2 authorization endpoint on the auth server
       window.location.href = `http://localhost:8080/oauth2/authorization/${providerId}`

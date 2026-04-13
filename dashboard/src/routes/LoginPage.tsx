@@ -5,13 +5,21 @@ import { Link } from '@tanstack/react-router'
 import { SocialLoginButtons } from '@/components/SocialLoginButtons'
 
 export function LoginPage() {
-  const { login, isLoading } = useAuth()
+  const { login, loginWithSocial, isLoading } = useAuth()
 
   const handleLogin = async () => {
     try {
       await login()
     } catch (error) {
       console.error('Login error:', error)
+    }
+  }
+
+  const handleSocialLogin = async (provider: string) => {
+    try {
+      await loginWithSocial(provider)
+    } catch (error) {
+      console.error('Social login error:', error)
     }
   }
 
@@ -32,7 +40,7 @@ export function LoginPage() {
         </div>
 
         {/* Social login buttons */}
-        <SocialLoginButtons mode="signin" disabled={isLoading} />
+        <SocialLoginButtons mode="signin" disabled={isLoading} onSocialLogin={handleSocialLogin} />
 
         {/* Email/password login via OIDC */}
         <Button size="lg" onClick={handleLogin} disabled={isLoading} className="w-full">

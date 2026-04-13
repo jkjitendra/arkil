@@ -2,6 +2,8 @@ package com.arkil.session;
 
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
+import com.arkil.email.EmailToken;
+import com.arkil.email.EmailTokenRepository;
 import com.arkil.tenant.Tenant;
 import com.arkil.tenant.TenantRepository;
 import com.arkil.user.ArkilUser;
@@ -42,6 +44,7 @@ class AuthFlowIntegrationTests {
     @Autowired private TenantRepository tenantRepository;
     @Autowired private RoleRepository roleRepository;
     @Autowired private PasswordCredentialRepository passwordCredentialRepository;
+    @Autowired private EmailTokenRepository emailTokenRepository;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private ObjectMapper objectMapper;
 
@@ -208,6 +211,60 @@ class AuthFlowIntegrationTests {
         }
     }
 
+    @Test
+    @Order(15)
+    @DisplayName("POST /api/v1/sessions — unverified email rejected with resend hint")
+    void createSessionUnverifiedEmailRejected() throws Exception {
+        ensureUserExists();
+        ArkilUser user = userRepository.findByEmail(TEST_EMAIL).orElseThrow();
+        user.setEmailVerified(false);
+        userRepository.save(user);
+
+        try {
+            mockMvc.perform(post("/api/v1/sessions")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(Map.of(
+                                    "identifier", TEST_EMAIL,
+                                    "password", TEST_PASSWORD
+                            ))))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error").value("email_not_verified"))
+                    .andExpect(jsonPath("$.email").value(TEST_EMAIL))
+                    .andExpect(jsonPath("$.canResendVerification").value(true));
+        } finally {
+            user.setEmailVerified(true);
+            userRepository.save(user);
+        }
+    }
+
+    @Test
+    @Order(16)
+    @DisplayName("GET /auth/magic-link/verify — unverified email shows resend verification action")
+    void hostedMagicLinkVerifyRequiresVerifiedEmail() throws Exception {
+        ensureUserExists();
+        ArkilUser user = userRepository.findByEmail(TEST_EMAIL).orElseThrow();
+        user.setEmailVerified(false);
+        userRepository.save(user);
+
+        EmailToken token = emailTokenRepository.save(EmailToken.builder()
+                .token("hosted-magic-token")
+                .userId(user.getId())
+                .email(user.getEmail())
+                .type(EmailToken.TokenType.MAGIC_LINK)
+                .expiresAt(java.time.Instant.now().plusSeconds(900))
+                .build());
+
+        try {
+            mockMvc.perform(get("/auth/magic-link/verify").param("token", token.getToken()))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(containsString("Verify your email before signing in with a magic link.")))
+                    .andExpect(content().string(containsString("Resend Verification Email")));
+        } finally {
+            user.setEmailVerified(true);
+            userRepository.save(user);
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Token Refresh
     // ─────────────────────────────────────────────────────────────────
@@ -305,7 +362,7 @@ class AuthFlowIntegrationTests {
     // ─────────────────────────────────────────────────────────────────
 
     private void ensureUserExists() {
-        if (userRepository.findByEmail(TEST_EMAIL).isEmpty()) {
+        ArkilUser user = userRepository.findByEmail(TEST_EMAIL).orElseGet(() -> {
             Tenant tenant = tenantRepository.findBySlug("demo")
                     .orElseGet(() -> tenantRepository.save(Tenant.builder()
                             .slug("test-auth")
@@ -317,7 +374,7 @@ class AuthFlowIntegrationTests {
                     .orElseGet(() -> roleRepository.save(Role.builder()
                             .name("USER").description("User").build()));
 
-            ArkilUser user = ArkilUser.builder()
+            ArkilUser createdUser = ArkilUser.builder()
                     .tenant(tenant)
                     .username("test-auth-user")
                     .email(TEST_EMAIL)
@@ -325,14 +382,20 @@ class AuthFlowIntegrationTests {
                     .enabled(true)
                     .emailVerified(true)
                     .build();
-            user.getRoles().add(userRole);
-            userRepository.save(user);
+            createdUser.getRoles().add(userRole);
+            return userRepository.save(createdUser);
+        });
 
-            passwordCredentialRepository.save(PasswordCredential.builder()
-                    .user(user)
-                    .passwordHash(passwordEncoder.encode(TEST_PASSWORD))
-                    .algorithm("bcrypt")
-                    .build());
-        }
+        user.setEnabled(true);
+        user.setEmailVerified(true);
+        userRepository.save(user);
+
+        PasswordCredential credential = passwordCredentialRepository.findByUser_Id(user.getId())
+                .orElseGet(() -> PasswordCredential.builder()
+                        .user(user)
+                        .algorithm("bcrypt")
+                        .build());
+        credential.setPasswordHash(passwordEncoder.encode(TEST_PASSWORD));
+        passwordCredentialRepository.save(credential);
     }
 }
