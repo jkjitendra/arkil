@@ -31,7 +31,7 @@ public class EmailService {
      * Send email verification email.
      */
     public void sendVerificationEmail(String to, String token, String username) {
-        String verifyUrl = baseUrl + "/api/v1/auth/verify-email?token=" + token;
+        String verifyUrl = baseUrl + "/auth/verify-email?token=" + token;
 
         Context context = new Context();
         context.setVariable("username", username);
@@ -101,7 +101,7 @@ public class EmailService {
      * Send magic link email for passwordless login.
      */
     public void sendMagicLinkEmail(String to, String token, String username) {
-        String magicUrl = baseUrl + "/api/v1/auth/magic-link?token=" + token;
+        String magicUrl = baseUrl + "/auth/magic-link/verify?token=" + token;
 
         Context context = new Context();
         context.setVariable("username", username);
