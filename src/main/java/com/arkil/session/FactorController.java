@@ -11,6 +11,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -38,6 +39,9 @@ public class FactorController {
     private final TotpService totpService;
     private final PasskeyCredentialRepository passkeyCredentialRepository;
 
+    @Value("${arkil.mfa.totp.issuer:Arkil}")
+    private String totpIssuer;
+
     // ─────────────────────────────────────────────────────────────────
     // TOTP Factor
     // ─────────────────────────────────────────────────────────────────
@@ -53,7 +57,7 @@ public class FactorController {
         log.info("User {} starting TOTP enrollment", userId);
 
         try {
-            TotpService.TotpEnrollmentResponse enrollment = totpService.startEnrollment(userId, "Arkil");
+            TotpService.TotpEnrollmentResponse enrollment = totpService.startEnrollment(userId, totpIssuer);
 
             return ResponseEntity.ok(Map.of(
                     "secret", enrollment.secret(),
