@@ -246,6 +246,19 @@ export interface ChangePasswordRequest {
   newPassword: string
 }
 
+export interface TotpStatusResponse {
+  enabled: boolean
+}
+
+export interface TotpEnrollmentResponse {
+  secret: string
+  qrCodeUri: string
+  algorithm: string
+  digits: number
+  period: number
+  message: string
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Public API (no auth required)
 // ─────────────────────────────────────────────────────────────────
@@ -444,6 +457,33 @@ export function createApiClient(getToken: () => Promise<string | null>) {
       const res = await fetcher('/users/me/password', {
         method: 'PUT',
         body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+
+    async getTotpStatus(): Promise<TotpStatusResponse> {
+      const res = await fetcher('/factors/totp/status')
+      return res.json()
+    },
+
+    async enrollTotp(): Promise<TotpEnrollmentResponse> {
+      const res = await fetcher('/factors/totp', {
+        method: 'POST',
+      })
+      return res.json()
+    },
+
+    async verifyTotp(code: string): Promise<{ success: boolean; message: string }> {
+      const res = await fetcher('/factors/totp/verify', {
+        method: 'POST',
+        body: JSON.stringify({ code }),
+      })
+      return res.json()
+    },
+
+    async removeTotp(): Promise<{ message: string }> {
+      const res = await fetcher('/factors/totp', {
+        method: 'DELETE',
       })
       return res.json()
     },

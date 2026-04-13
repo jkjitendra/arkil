@@ -1,9 +1,11 @@
 package com.arkil.config;
 
 import com.arkil.policy.EmailNotVerifiedAuthenticationException;
+import com.arkil.policy.InvalidTotpAuthenticationException;
 import com.arkil.policy.ClientContextFilter;
 import com.arkil.policy.PolicyAwareAuthenticationProvider;
 import com.arkil.policy.PolicyEnforcementFilter;
+import com.arkil.policy.TotpRequiredAuthenticationException;
 import com.arkil.security.LoginRateLimitFilter;
 import com.arkil.security.ProjectCorsConfigurationSource;
 import com.arkil.tenant.TenantContextFilter;
@@ -112,6 +114,12 @@ public class SecurityConfig {
                             if (exception instanceof EmailNotVerifiedAuthenticationException unverified) {
                                 redirect.queryParam("error", "unverified");
                                 redirect.queryParam("email", unverified.getEmail());
+                            } else if (exception instanceof TotpRequiredAuthenticationException mfaRequired) {
+                                redirect.queryParam("error", "mfa_required");
+                                redirect.queryParam("username", mfaRequired.getIdentifier());
+                            } else if (exception instanceof InvalidTotpAuthenticationException invalidTotp) {
+                                redirect.queryParam("error", "invalid_totp");
+                                redirect.queryParam("username", invalidTotp.getIdentifier());
                             } else if (exception instanceof DisabledException) {
                                 redirect.queryParam("error", "disabled");
                             } else {

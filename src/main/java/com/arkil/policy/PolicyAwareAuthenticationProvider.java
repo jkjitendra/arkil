@@ -6,6 +6,7 @@ import com.arkil.audit.AuditService;
 import com.arkil.client.AuthModule;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
+import com.arkil.credential.totp.TotpService;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,6 +43,8 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
     private final UserRepository userRepository;
     private final PasswordCredentialRepository passwordCredentialRepository;
     private final PasswordEncoder passwordEncoder;
+    private final TotpService totpService;
+    private final ClientContextResolver clientContextResolver;
 
     @Override
     public Authentication authenticate(Authentication authentication) throws AuthenticationException {
@@ -51,6 +54,13 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
 
         // Get client context if available (optional for OAuth2 auth server flows)
         ClientContext context = contextHolder.hasContext() ? contextHolder.getContext() : null;
+        if (context == null && request != null) {
+            ClientContext resolvedContext = clientContextResolver.resolve(request);
+            if (resolvedContext.isResolved()) {
+                contextHolder.setContext(resolvedContext);
+                context = resolvedContext;
+            }
+        }
 
         // If we have a client context, enforce module policies
         if (context != null && context.isResolved()) {
@@ -87,6 +97,19 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
                 auditService.logFailure(AuditEventType.AUTH_LOGIN_FAILURE, username, ActorType.USER,
                         clientId, "Invalid password", request);
                 throw new BadCredentialsException("Invalid username or password");
+            }
+
+            if (totpService.isEnabled(user.getId())) {
+                String totpCode = request != null ? request.getParameter("totpCode") : null;
+                if (totpCode == null || totpCode.isBlank()) {
+                    auditService.logFailure(AuditEventType.MFA_FAILED, username, ActorType.USER,
+                            clientId, "TOTP code required", request);
+                    throw new TotpRequiredAuthenticationException(username);
+                }
+
+                if (!totpService.verify(user.getId(), totpCode)) {
+                    throw new InvalidTotpAuthenticationException(username);
+                }
             }
 
             Collection<GrantedAuthority> authorities = user.getRoles().stream()

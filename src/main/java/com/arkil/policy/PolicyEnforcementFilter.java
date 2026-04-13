@@ -25,6 +25,7 @@ import java.util.regex.Pattern;
 public class PolicyEnforcementFilter extends OncePerRequestFilter {
 
     private final ClientContextHolder contextHolder;
+    private final ClientContextResolver clientContextResolver;
 
     // Map of URL patterns to required auth modules
     private static final Map<Pattern, AuthModule> GUARDED_ENDPOINTS = Map.of(
@@ -36,6 +37,10 @@ public class PolicyEnforcementFilter extends OncePerRequestFilter {
 
             // Magic link routes
             Pattern.compile("^/auth/magic-link.*"), AuthModule.MAGIC_LINK,
+
+            // Account factor APIs
+            Pattern.compile("^/api/v1/factors/totp.*"), AuthModule.TOTP,
+            Pattern.compile("^/api/v1/factors/passkey.*"), AuthModule.PASSKEY,
 
             // WebAuthn/Passkey routes
             Pattern.compile("^/webauthn/.*"), AuthModule.PASSKEY,
@@ -59,13 +64,17 @@ public class PolicyEnforcementFilter extends OncePerRequestFilter {
 
                 // Check if module is enabled for the client
                 if (!contextHolder.hasContext()) {
-                    if (isContextOptional(path, requiredModule)) {
+                    ClientContext resolvedContext = clientContextResolver.resolve(request);
+                    if (resolvedContext.isResolved()) {
+                        contextHolder.setContext(resolvedContext);
+                    } else if (isContextOptional(request, path, requiredModule)) {
                         log.debug("Allowing {} without client context", path);
                         break;
+                    } else {
+                        log.warn("Blocked {} - no client context", path);
+                        sendForbidden(response, "Missing client context. Please provide client_id.");
+                        return;
                     }
-                    log.warn("Blocked {} - no client context", path);
-                    sendForbidden(response, "Missing client context. Please provide client_id.");
-                    return;
                 }
 
                 ClientContext context = contextHolder.getContext();
@@ -92,8 +101,20 @@ public class PolicyEnforcementFilter extends OncePerRequestFilter {
                 "{\"error\": \"forbidden\", \"message\": \"%s\"}", message));
     }
 
-    private boolean isContextOptional(String path, AuthModule requiredModule) {
-        return requiredModule == AuthModule.MAGIC_LINK && "/auth/magic-link/verify".equals(path);
+    private boolean isContextOptional(HttpServletRequest request, String path, AuthModule requiredModule) {
+        boolean explicitClientContext = hasExplicitClientContext(request);
+        return (requiredModule == AuthModule.MAGIC_LINK && "/auth/magic-link/verify".equals(path))
+                || (path.startsWith("/api/v1/factors/") && !explicitClientContext);
+    }
+
+    private boolean hasExplicitClientContext(HttpServletRequest request) {
+        return hasText(request.getParameter("client_id"))
+                || hasText(request.getParameter("pk"))
+                || hasText(request.getHeader("X-Publishable-Key"));
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     @Override
