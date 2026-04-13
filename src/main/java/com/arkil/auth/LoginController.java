@@ -7,6 +7,7 @@ import com.arkil.email.EmailToken;
 import com.arkil.email.EmailTokenService;
 import com.arkil.policy.ClientContext;
 import com.arkil.policy.ClientContextHolder;
+import com.arkil.policy.ClientContextResolver;
 import com.arkil.tenant.TenantContext;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
@@ -46,6 +47,7 @@ import java.util.stream.Collectors;
 public class LoginController {
 
     private final ClientContextHolder clientContextHolder;
+    private final ClientContextResolver clientContextResolver;
     private final EndUserRegistrationService endUserRegistrationService;
     private final EmailTokenService emailTokenService;
     private final UserRepository userRepository;
@@ -57,7 +59,8 @@ public class LoginController {
     // ─────────────────────────────────────────────────────────────────
 
     @GetMapping("/login")
-    public String login() {
+    public String login(HttpServletRequest request, Model model) {
+        populateClientContext(request, model);
         return "login";
     }
 
@@ -124,7 +127,8 @@ public class LoginController {
     // ─────────────────────────────────────────────────────────────────
 
     @GetMapping("/forgot-password")
-    public String showForgotPassword() {
+    public String showForgotPassword(HttpServletRequest request, Model model) {
+        populateClientContext(request, model);
         return "forgot-password";
     }
 
@@ -206,17 +210,20 @@ public class LoginController {
     // ─────────────────────────────────────────────────────────────────
 
     @GetMapping("/auth/magic-link")
-    public String showMagicLinkForm() {
+    public String showMagicLinkForm(HttpServletRequest request, Model model) {
+        populateClientContext(request, model);
         return "magic-link";
     }
 
     @PostMapping("/auth/magic-link")
     public String sendMagicLink(
             @RequestParam String email,
+            HttpServletRequest request,
             Model model) {
 
         emailTokenService.sendMagicLink(email);
 
+        populateClientContext(request, model);
         model.addAttribute("sent", true);
         model.addAttribute("email", email);
         return "magic-link";
@@ -230,6 +237,7 @@ public class LoginController {
 
         Optional<EmailToken> tokenOpt = emailTokenService.verifyToken(token, EmailToken.TokenType.MAGIC_LINK);
         if (tokenOpt.isEmpty()) {
+            populateClientContext(request, model);
             model.addAttribute("error", "Invalid or expired magic link. Please request a new one.");
             return "magic-link";
         }
@@ -237,11 +245,13 @@ public class LoginController {
         EmailToken emailToken = tokenOpt.get();
         ArkilUser user = userRepository.findById(emailToken.getUserId()).orElse(null);
         if (user == null || !user.getEnabled()) {
+            populateClientContext(request, model);
             model.addAttribute("error", "Account not found or disabled.");
             return "magic-link";
         }
 
         if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            populateClientContext(request, model);
             model.addAttribute("error", "Verify your email before signing in with a magic link.");
             model.addAttribute("email", user.getEmail());
             model.addAttribute("verificationRequired", true);
@@ -354,6 +364,18 @@ public class LoginController {
             return clientContextHolder.getContext().getClientId();
         }
         return null;
+    }
+
+    private void populateClientContext(HttpServletRequest request, Model model) {
+        ClientContext context = clientContextHolder.hasContext()
+                ? clientContextHolder.getContext()
+                : clientContextResolver.resolve(request);
+
+        if (context != null && context.isResolved()) {
+            clientContextHolder.setContext(context);
+            request.setAttribute("clientContext", context);
+            model.addAttribute("clientContext", context);
+        }
     }
 
     private Optional<ArkilUser> resolveUserByEmail(String email) {

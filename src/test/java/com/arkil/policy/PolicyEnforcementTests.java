@@ -9,6 +9,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Set;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -154,5 +155,24 @@ class PolicyEnforcementTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$.length()").value(AuthModule.values().length));
+    }
+
+    @Test
+    @Order(11)
+    @DisplayName("Factor API is not blocked without client context for authenticated account settings")
+    void factorApiAllowedWithoutClientContext() throws Exception {
+        mockMvc.perform(get("/api/v1/factors/totp/status")
+                        .with(jwt().jwt(jwt -> jwt.subject("00000000-0000-0000-0000-000000000001"))))
+                .andExpect(status().is(org.hamcrest.Matchers.not(403)));
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("Factor API is blocked when client context disables TOTP")
+    void factorApiBlockedForDisabledClientModule() throws Exception {
+        mockMvc.perform(get("/api/v1/factors/totp/status")
+                        .param("client_id", TEST_CLIENT_ID)
+                        .with(jwt().jwt(jwt -> jwt.subject("00000000-0000-0000-0000-000000000001"))))
+                .andExpect(status().isForbidden());
     }
 }
