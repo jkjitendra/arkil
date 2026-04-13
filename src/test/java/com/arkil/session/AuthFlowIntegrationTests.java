@@ -1,9 +1,12 @@
 package com.arkil.session;
 
+import com.arkil.credential.totp.TotpCredentialRepository;
+import com.arkil.credential.totp.TotpService;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
 import com.arkil.email.EmailToken;
 import com.arkil.email.EmailTokenRepository;
+import com.arkil.security.SecretEncryptionService;
 import com.arkil.tenant.Tenant;
 import com.arkil.tenant.TenantRepository;
 import com.arkil.user.ArkilUser;
@@ -23,6 +26,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -45,6 +49,9 @@ class AuthFlowIntegrationTests {
     @Autowired private RoleRepository roleRepository;
     @Autowired private PasswordCredentialRepository passwordCredentialRepository;
     @Autowired private EmailTokenRepository emailTokenRepository;
+    @Autowired private TotpService totpService;
+    @Autowired private TotpCredentialRepository totpCredentialRepository;
+    @Autowired private SecretEncryptionService secretEncryptionService;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private ObjectMapper objectMapper;
 
@@ -265,6 +272,47 @@ class AuthFlowIntegrationTests {
         }
     }
 
+    @Test
+    @Order(17)
+    @DisplayName("POST /login — hosted password login redirects for TOTP challenge")
+    void hostedPasswordLoginRequiresTotp() throws Exception {
+        ensureUserExists();
+        enableTotpForTestUser();
+        ArkilUser user = userRepository.findByEmail(TEST_EMAIL).orElseThrow();
+
+        try {
+            mockMvc.perform(post("/login")
+                            .with(csrf())
+                            .param("username", TEST_EMAIL)
+                            .param("password", TEST_PASSWORD))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrlPattern("/login?error=mfa_required*"));
+        } finally {
+            totpService.remove(user.getId());
+        }
+    }
+
+    @Test
+    @Order(18)
+    @DisplayName("POST /login — hosted password login succeeds with valid TOTP")
+    void hostedPasswordLoginSucceedsWithTotp() throws Exception {
+        ensureUserExists();
+        String code = enableTotpForTestUser();
+        ArkilUser user = userRepository.findByEmail(TEST_EMAIL).orElseThrow();
+
+        try {
+            mockMvc.perform(post("/login")
+                            .with(csrf())
+                            .param("username", TEST_EMAIL)
+                            .param("password", TEST_PASSWORD)
+                            .param("totpCode", code))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/"));
+        } finally {
+            totpService.remove(user.getId());
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Token Refresh
     // ─────────────────────────────────────────────────────────────────
@@ -397,5 +445,72 @@ class AuthFlowIntegrationTests {
                         .build());
         credential.setPasswordHash(passwordEncoder.encode(TEST_PASSWORD));
         passwordCredentialRepository.save(credential);
+    }
+
+    private String enableTotpForTestUser() {
+        ArkilUser user = userRepository.findByEmail(TEST_EMAIL).orElseThrow();
+
+        if (!totpService.isEnabled(user.getId())) {
+            TotpService.TotpEnrollmentResponse enrollment = totpService.startEnrollment(user.getId(), "Arkil");
+            String code = generateTotpCode(enrollment.secret(), "SHA1", 6, 30);
+            Assertions.assertTrue(totpService.confirmEnrollment(user.getId(), code));
+        }
+
+        String secret = totpCredentialRepository.findByUserId(user.getId())
+                .map(credential -> secretEncryptionService.decrypt(credential.getSecretEncrypted()))
+                .orElseThrow();
+
+        return generateTotpCode(secret, "SHA1", 6, 30);
+    }
+
+    private String generateTotpCode(String secretBase32, String algorithm, int digits, int period) {
+        byte[] secret = decodeBase32(secretBase32);
+        long timeStep = java.time.Instant.now().getEpochSecond() / period;
+        return generateCode(secret, timeStep, algorithm, digits);
+    }
+
+    private byte[] decodeBase32(String encoded) {
+        final String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        java.util.List<Byte> bytes = new java.util.ArrayList<>();
+        int buffer = 0;
+        int bitsInBuffer = 0;
+
+        for (char c : encoded.toUpperCase().toCharArray()) {
+            int value = alphabet.indexOf(c);
+            if (value >= 0) {
+                buffer = (buffer << 5) | value;
+                bitsInBuffer += 5;
+                if (bitsInBuffer >= 8) {
+                    bytes.add((byte) (buffer >> (bitsInBuffer - 8)));
+                    bitsInBuffer -= 8;
+                }
+            }
+        }
+
+        byte[] result = new byte[bytes.size()];
+        for (int i = 0; i < bytes.size(); i++) {
+            result[i] = bytes.get(i);
+        }
+        return result;
+    }
+
+    private String generateCode(byte[] secret, long timeStep, String algorithm, int digits) {
+        try {
+            byte[] timeBytes = java.nio.ByteBuffer.allocate(8).putLong(timeStep).array();
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("Hmac" + algorithm);
+            mac.init(new javax.crypto.spec.SecretKeySpec(secret, "RAW"));
+            byte[] hash = mac.doFinal(timeBytes);
+
+            int offset = hash[hash.length - 1] & 0x0F;
+            int binary = ((hash[offset] & 0x7F) << 24)
+                    | ((hash[offset + 1] & 0xFF) << 16)
+                    | ((hash[offset + 2] & 0xFF) << 8)
+                    | (hash[offset + 3] & 0xFF);
+
+            int otp = binary % (int) Math.pow(10, digits);
+            return String.format("%0" + digits + "d", otp);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
