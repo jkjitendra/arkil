@@ -18,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -191,8 +192,18 @@ public class ProjectPolicyController {
                 : project.getEnvironment();
 
         // Upsert: find existing or create new
-        ProjectOAuthProvider provider = providerRepository
-                .findByProjectIdAndProviderAndEnvironment(projectId, request.getProvider(), env)
+        Optional<ProjectOAuthProvider> existingProvider = providerRepository
+                .findByProjectIdAndProviderAndEnvironment(projectId, request.getProvider(), env);
+
+        boolean isCreate = existingProvider.isEmpty();
+        if (isCreate && !StringUtils.hasText(request.getClientSecret())) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "missing_client_secret",
+                    "message", "Client secret is required when creating a provider configuration"
+            ));
+        }
+
+        ProjectOAuthProvider provider = existingProvider
                 .orElseGet(() -> ProjectOAuthProvider.builder()
                         .projectId(projectId)
                         .provider(request.getProvider())
@@ -200,7 +211,9 @@ public class ProjectPolicyController {
                         .build());
 
         provider.setClientId(request.getClientId());
-        provider.setClientSecretEncrypted(encryptionService.encrypt(request.getClientSecret()));
+        if (StringUtils.hasText(request.getClientSecret())) {
+            provider.setClientSecretEncrypted(encryptionService.encrypt(request.getClientSecret().trim()));
+        }
         provider.setScopes(request.getScopes() != null ? request.getScopes() : getDefaultScopes(request.getProvider()));
         provider.setEnabled(request.getEnabled() != null ? request.getEnabled() : true);
 
@@ -391,7 +404,6 @@ public class ProjectPolicyController {
         @NotBlank(message = "Client ID is required")
         private String clientId;
 
-        @NotBlank(message = "Client secret is required")
         private String clientSecret;
 
         private String scopes;
