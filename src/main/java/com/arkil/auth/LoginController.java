@@ -7,6 +7,7 @@ import com.arkil.email.EmailToken;
 import com.arkil.email.EmailTokenService;
 import com.arkil.policy.ClientContext;
 import com.arkil.policy.ClientContextHolder;
+import com.arkil.tenant.TenantContext;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,10 +21,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
@@ -235,6 +241,13 @@ public class LoginController {
             return "magic-link";
         }
 
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            model.addAttribute("error", "Verify your email before signing in with a magic link.");
+            model.addAttribute("email", user.getEmail());
+            model.addAttribute("verificationRequired", true);
+            return "magic-link";
+        }
+
         // Create authentication session
         Set<SimpleGrantedAuthority> authorities = user.getRoles().stream()
                 .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getName()))
@@ -274,6 +287,53 @@ public class LoginController {
         return "verify-email";
     }
 
+    @GetMapping("/auth/social/{provider}")
+    public String startSocialLogin(
+            @PathVariable String provider,
+            @RequestParam("return_to") String returnTo,
+            HttpServletRequest request) {
+
+        if (!Set.of("google", "github", "apple", "linkedin").contains(provider.toLowerCase())) {
+            return "redirect:/login?error=oauth2";
+        }
+
+        String normalizedReturnTo = normalizeReturnTo(returnTo, request);
+        if (normalizedReturnTo == null) {
+            return "redirect:/login?error=oauth2";
+        }
+
+        request.getSession(true).setAttribute(AuthSessionAttributes.SOCIAL_LOGIN_RETURN_TO, normalizedReturnTo);
+        return "redirect:/oauth2/authorization/" + provider.toLowerCase();
+    }
+
+    @PostMapping("/auth/resend-verification")
+    public String resendVerification(
+            @RequestParam String email,
+            @RequestParam(required = false) String client_id,
+            @RequestParam(defaultValue = "/login") String redirectTo) {
+
+        if (StringUtils.hasText(email)) {
+            resolveUserByEmail(email.trim()).ifPresent(user -> {
+                if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+                    emailTokenService.sendVerificationEmail(user.getId());
+                }
+            });
+        }
+
+        String target = isAllowedHostedRedirect(redirectTo) ? redirectTo : "/login";
+        UriComponentsBuilder redirect = UriComponentsBuilder.fromPath(target)
+                .queryParam("verification", "sent");
+
+        if (StringUtils.hasText(email)) {
+            redirect.queryParam("email", email.trim());
+        }
+        if (StringUtils.hasText(client_id)) {
+            redirect.queryParam("client_id", client_id);
+        }
+
+        return "redirect:" + redirect.build().encode().toUriString();
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────
@@ -294,5 +354,58 @@ public class LoginController {
             return clientContextHolder.getContext().getClientId();
         }
         return null;
+    }
+
+    private Optional<ArkilUser> resolveUserByEmail(String email) {
+        if (!StringUtils.hasText(email)) {
+            return Optional.empty();
+        }
+
+        if (TenantContext.isSet()) {
+            return userRepository.findByTenantIdAndEmail(TenantContext.getTenantId(), email);
+        }
+
+        return userRepository.findByEmail(email);
+    }
+
+    private boolean isAllowedHostedRedirect(String redirectTo) {
+        return "/login".equals(redirectTo) || "/auth/magic-link".equals(redirectTo);
+    }
+
+    private String normalizeReturnTo(String returnTo, HttpServletRequest request) {
+        if (!StringUtils.hasText(returnTo)) {
+            return null;
+        }
+
+        try {
+            URI uri = URI.create(returnTo);
+            String path = uri.getPath();
+            if (!"/oauth2/authorize".equals(path)) {
+                return null;
+            }
+
+            if (uri.isAbsolute()) {
+                boolean sameOrigin = request.getScheme().equalsIgnoreCase(uri.getScheme())
+                        && request.getServerName().equalsIgnoreCase(uri.getHost())
+                        && normalizePort(request.getScheme(), request.getServerPort())
+                        == normalizePort(uri.getScheme(), uri.getPort());
+                return sameOrigin ? uri.toString() : null;
+            }
+
+            return ServletUriComponentsBuilder.fromCurrentContextPath()
+                    .path(path)
+                    .query(uri.getQuery())
+                    .build()
+                    .toUriString();
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    private int normalizePort(String scheme, int port) {
+        if (port > 0) {
+            return port;
+        }
+        return "https".equalsIgnoreCase(scheme) ? 443 : 80;
     }
 }

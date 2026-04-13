@@ -205,6 +205,17 @@ public class AuthController {
             ));
         }
 
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "error", "email_not_verified",
+                    "message", "Verify your email address before signing in.",
+                    "email", user.getEmail(),
+                    "canResendVerification", true,
+                    "resendVerificationPath", "/api/v1/auth/resend-verification"
+            ));
+        }
+
         log.info("Magic link verified via API for user: {}", user.getEmail());
         return ResponseEntity.ok(Map.of(
                 "success", true,

@@ -1,5 +1,6 @@
 package com.arkil.config;
 
+import com.arkil.policy.EmailNotVerifiedAuthenticationException;
 import com.arkil.policy.ClientContextFilter;
 import com.arkil.policy.PolicyAwareAuthenticationProvider;
 import com.arkil.policy.PolicyEnforcementFilter;
@@ -9,6 +10,7 @@ import com.arkil.tenant.TenantContextFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
@@ -19,6 +21,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.util.UriComponentsBuilder;
 
 /**
  * SecurityFilterChain #2: Application endpoints.
@@ -72,6 +75,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/login", "/signup", "/forgot-password", "/reset-password").permitAll()
                         .requestMatchers("/auth/magic-link", "/auth/magic-link/verify", "/auth/verify-email").permitAll()
+                        .requestMatchers("/auth/social/**", "/auth/resend-verification").permitAll()
                         .requestMatchers("/error", "/actuator/health", "/h2-console/**").permitAll()
                         .requestMatchers("/api/v1/meta/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
@@ -98,6 +102,24 @@ public class SecurityConfig {
                 )
                 .formLogin(form -> form
                         .loginPage("/login")
+                        .failureHandler((request, response, exception) -> {
+                            UriComponentsBuilder redirect = UriComponentsBuilder.fromPath("/login");
+                            String clientId = request.getParameter("client_id");
+                            if (clientId != null && !clientId.isBlank()) {
+                                redirect.queryParam("client_id", clientId);
+                            }
+
+                            if (exception instanceof EmailNotVerifiedAuthenticationException unverified) {
+                                redirect.queryParam("error", "unverified");
+                                redirect.queryParam("email", unverified.getEmail());
+                            } else if (exception instanceof DisabledException) {
+                                redirect.queryParam("error", "disabled");
+                            } else {
+                                redirect.queryParam("error", "credentials");
+                            }
+
+                            response.sendRedirect(redirect.build().encode().toUriString());
+                        })
                         .permitAll()
                 )
                 .logout(logout -> logout

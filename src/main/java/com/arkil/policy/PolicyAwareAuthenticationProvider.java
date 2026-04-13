@@ -74,6 +74,12 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
                 throw new DisabledException("User account is disabled");
             }
 
+            if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+                auditService.logFailure(AuditEventType.AUTH_LOGIN_FAILURE, username, ActorType.USER,
+                        clientId, "Email not verified", request);
+                throw new EmailNotVerifiedAuthenticationException(user.getEmail());
+            }
+
             PasswordCredential credential = passwordCredentialRepository.findByUser_Id(user.getId())
                     .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
 
