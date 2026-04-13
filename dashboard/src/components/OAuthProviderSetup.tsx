@@ -104,7 +104,7 @@ export function OAuthProviderSetup({ projectId, provider, open, onOpenChange }: 
       await upsertMutation.mutateAsync({
         provider,
         clientId: clientId.trim(),
-        clientSecret: clientSecret.trim() || existingConfig?.clientSecretMasked || '',
+        clientSecret: clientSecret.trim() || undefined,
         scopes: scopes.trim() || undefined,
       })
       onOpenChange(false)

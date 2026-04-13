@@ -50,6 +50,13 @@ const AUTH_MODULES = [
     category: 'primary' as const,
   },
   {
+    id: 'MAGIC_LINK',
+    label: 'Magic Link',
+    description: 'Passwordless sign-in using one-time email links',
+    icon: Mail,
+    category: 'primary' as const,
+  },
+  {
     id: 'OAUTH2_GOOGLE',
     label: 'Google',
     description: 'Sign in with Google',
