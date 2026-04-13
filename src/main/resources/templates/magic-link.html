@@ -61,6 +61,10 @@
         <!-- Error message -->
         <div th:if="${error}" class="error-message" th:text="${error}">Error</div>
 
+        <div th:if="${param.verification != null and param.verification[0] == 'sent'}" class="success-message">
+            Verification email sent. Check your inbox to finish signing in.
+        </div>
+
         <!-- Success message -->
         <div th:if="${sent}" class="success-message">
             We've sent a sign-in link to <strong th:text="${email}">email</strong>.
@@ -79,6 +83,14 @@
                 </div>
 
                 <button type="submit" class="submit-btn">Send Magic Link</button>
+            </form>
+
+            <form th:if="${verificationRequired and email != null}" th:action="@{/auth/resend-verification}" method="post" style="margin-top: 14px;">
+                <input type="hidden" name="email" th:value="${email}" />
+                <input type="hidden" name="redirectTo" value="/auth/magic-link" />
+                <button type="submit" class="submit-btn" style="background: linear-gradient(135deg, #e94560, #0f3460);">
+                    Resend Verification Email
+                </button>
             </form>
         </div>
 

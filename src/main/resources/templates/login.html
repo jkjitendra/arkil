@@ -302,7 +302,11 @@
         <div th:if="${param.error}" class="error-message">
             <span th:if="${param.error[0] == 'oauth2'}">Social login failed. Please try again.</span>
             <span th:if="${param.error[0] == 'disabled'}">This sign-in method is not enabled.</span>
-            <span th:if="${param.error[0] != 'oauth2' and param.error[0] != 'disabled'}">Invalid username or password.</span>
+            <span th:if="${param.error[0] == 'unverified'}">Verify your email address before signing in.</span>
+            <span th:if="${param.error[0] != 'oauth2' and param.error[0] != 'disabled' and param.error[0] != 'unverified'}">Invalid username or password.</span>
+        </div>
+        <div th:if="${param.verification != null and param.verification[0] == 'sent'}" class="warning-message">
+            Verification email sent.
         </div>
         <div th:if="${param.logout}" class="warning-message">
             You have been signed out.
@@ -316,7 +320,8 @@
 
                 <div class="form-group">
                     <label for="username">Username or Email</label>
-                    <input type="text" id="username" name="username" placeholder="Enter your username" required autofocus>
+                    <input type="text" id="username" name="username" placeholder="Enter your username"
+                           th:value="${param.email != null ? param.email[0] : ''}" required autofocus>
                 </div>
 
                 <div class="form-group">
@@ -333,6 +338,14 @@
                     <a th:if="${clientContext != null and clientContext.resolved}"
                        th:href="@{/signup(client_id=${clientContext.clientId})}">Create account</a>
                 </div>
+            </form>
+
+            <form th:if="${param.error != null and param.error[0] == 'unverified' and param.email != null}"
+                  th:action="@{/auth/resend-verification}" method="post" style="margin-top: 16px;">
+                <input type="hidden" name="email" th:value="${param.email[0]}"/>
+                <input th:if="${param.client_id != null}" type="hidden" name="client_id" th:value="${param.client_id[0]}"/>
+                <input type="hidden" name="redirectTo" value="/login"/>
+                <button type="submit" class="magic-link-btn">Resend verification email</button>
             </form>
         </div>
 
