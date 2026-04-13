@@ -59,6 +59,10 @@ public class PolicyEnforcementFilter extends OncePerRequestFilter {
 
                 // Check if module is enabled for the client
                 if (!contextHolder.hasContext()) {
+                    if (isContextOptional(path, requiredModule)) {
+                        log.debug("Allowing {} without client context", path);
+                        break;
+                    }
                     log.warn("Blocked {} - no client context", path);
                     sendForbidden(response, "Missing client context. Please provide client_id.");
                     return;
@@ -86,6 +90,10 @@ public class PolicyEnforcementFilter extends OncePerRequestFilter {
         response.setContentType("application/json");
         response.getWriter().write(String.format(
                 "{\"error\": \"forbidden\", \"message\": \"%s\"}", message));
+    }
+
+    private boolean isContextOptional(String path, AuthModule requiredModule) {
+        return requiredModule == AuthModule.MAGIC_LINK && "/auth/magic-link/verify".equals(path);
     }
 
     @Override
