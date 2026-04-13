@@ -156,6 +156,18 @@ public class SessionController {
             ));
         }
 
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            auditService.logFailure(AuditEventType.AUTH_LOGIN_FAILURE, user.getId().toString(),
+                    ActorType.USER, null, "Email not verified", httpRequest);
+            return ResponseEntity.status(403).body(Map.of(
+                    "error", "email_not_verified",
+                    "message", "Verify your email address before signing in.",
+                    "email", user.getEmail(),
+                    "canResendVerification", true,
+                    "resendVerificationPath", "/api/v1/auth/resend-verification"
+            ));
+        }
+
         // 3. Check MFA requirements
         if (totpService.isEnabled(user.getId())) {
             if (request.getTotpCode() == null || request.getTotpCode().isBlank()) {
