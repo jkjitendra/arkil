@@ -78,6 +78,7 @@ public class SecurityConfig {
                         .requestMatchers("/login", "/signup", "/forgot-password", "/reset-password").permitAll()
                         .requestMatchers("/auth/magic-link", "/auth/magic-link/verify", "/auth/verify-email").permitAll()
                         .requestMatchers("/auth/social/**", "/auth/resend-verification").permitAll()
+                        .requestMatchers("/webauthn/authenticate", "/webauthn/authenticate/options").permitAll()
                         .requestMatchers("/error", "/actuator/health", "/h2-console/**").permitAll()
                         .requestMatchers("/api/v1/meta/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/api-docs/**", "/v3/api-docs/**").permitAll()
@@ -151,6 +152,7 @@ public class SecurityConfig {
                         .ignoringRequestMatchers("/h2-console/**")
                         // Ignore CSRF for stateless API endpoints (they'll use tokens)
                         .ignoringRequestMatchers("/api/v1/**")
+                        .ignoringRequestMatchers("/webauthn/**")
                 )
                 .headers(headers -> headers
                         .frameOptions(frame -> frame.sameOrigin())
