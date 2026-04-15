@@ -259,6 +259,44 @@ export interface TotpEnrollmentResponse {
   message: string
 }
 
+export interface Passkey {
+  id: string
+  credentialId: string
+  label: string
+  createdAt: string
+  lastUsedAt?: string
+  rpId: string
+  userVerificationCapable: boolean
+}
+
+export interface PasskeyRegistrationOptions {
+  flowId: string
+  challenge: string
+  rp: {
+    name: string
+    id: string
+  }
+  user: {
+    id: string
+    name: string
+    displayName: string
+  }
+  pubKeyCredParams: Array<{
+    type: string
+    alg: number
+  }>
+  timeout: number
+  attestation: string
+  authenticatorSelection: {
+    residentKey: string
+    userVerification: string
+  }
+  excludeCredentials: Array<{
+    type: string
+    id: string
+  }>
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Public API (no auth required)
 // ─────────────────────────────────────────────────────────────────
@@ -483,6 +521,41 @@ export function createApiClient(getToken: () => Promise<string | null>) {
 
     async removeTotp(): Promise<{ message: string }> {
       const res = await fetcher('/factors/totp', {
+        method: 'DELETE',
+      })
+      return res.json()
+    },
+
+    async listPasskeys(): Promise<{ passkeys: Passkey[] }> {
+      const res = await fetcher('/factors/passkey')
+      return res.json()
+    },
+
+    async getPasskeyRegistrationOptions(): Promise<PasskeyRegistrationOptions> {
+      const res = await fetcher('/factors/passkey/register/options', {
+        method: 'POST',
+      })
+      return res.json()
+    },
+
+    async registerPasskey(payload: Record<string, unknown>): Promise<{ success: boolean; message: string; passkey: Passkey }> {
+      const res = await fetcher('/factors/passkey/register', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      return res.json()
+    },
+
+    async renamePasskey(credentialId: string, label: string): Promise<{ success: boolean; message: string; passkey: Passkey }> {
+      const res = await fetcher(`/factors/passkey/${encodeURIComponent(credentialId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ label }),
+      })
+      return res.json()
+    },
+
+    async removePasskey(credentialId: string): Promise<{ message: string }> {
+      const res = await fetcher(`/factors/passkey/${encodeURIComponent(credentialId)}`, {
         method: 'DELETE',
       })
       return res.json()
