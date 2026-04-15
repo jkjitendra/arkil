@@ -45,6 +45,11 @@ public class PasskeyCredential {
     private String publicKey;
 
     /**
+     * COSE algorithm identifier used for signature verification.
+     */
+    private Integer publicKeyAlgorithm;
+
+    /**
      * Signature counter for replay protection.
      */
     @Column(nullable = false)
