@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Save, User, Shield, Key, Loader2, Check, AlertTriangle, Smartphone } from 'lucide-react'
 import { useProfile, useUpdateProfile, useChangePassword, useDeleteAccount } from '@/hooks/useProfile'
-import { useEnrollTotp, useRemoveTotp, useTotpStatus, useVerifyTotp } from '@/hooks/useFactors'
+import { useCreatePasskey, useEnrollTotp, usePasskeys, useRemovePasskey, useRemoveTotp, useRenamePasskey, useTotpStatus, useVerifyTotp } from '@/hooks/useFactors'
 import { useAuth } from '@/lib/auth'
+import { useApiClient } from '@/lib/api'
 
 export function SettingsPage() {
   const { data: profile, isLoading } = useProfile()
@@ -16,7 +17,12 @@ export function SettingsPage() {
   const enrollTotp = useEnrollTotp()
   const verifyTotp = useVerifyTotp()
   const removeTotp = useRemoveTotp()
+  const passkeys = usePasskeys()
+  const createPasskey = useCreatePasskey()
+  const renamePasskey = useRenamePasskey()
+  const removePasskey = useRemovePasskey()
   const { logout } = useAuth()
+  const api = useApiClient()
 
   // Profile form state
   const [displayName, setDisplayName] = useState('')
@@ -39,6 +45,13 @@ export function SettingsPage() {
     digits: number
     period: number
   } | null>(null)
+
+  // Passkey state
+  const [passkeyLabel, setPasskeyLabel] = useState('')
+  const [passkeyError, setPasskeyError] = useState('')
+  const [passkeySuccess, setPasskeySuccess] = useState('')
+  const [editingPasskeyId, setEditingPasskeyId] = useState<string | null>(null)
+  const [editingPasskeyLabel, setEditingPasskeyLabel] = useState('')
 
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -148,6 +161,140 @@ export function SettingsPage() {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to remove authenticator app'
       setTotpError(message)
+    }
+  }
+
+  const base64UrlToUint8Array = (value: string) => {
+    const normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4)
+    const binary = window.atob(padded)
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0))
+  }
+
+  const uint8ArrayToBase64Url = (buffer: ArrayBuffer | Uint8Array) => {
+    const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer)
+    let binary = ''
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte)
+    })
+    return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+  }
+
+  const handleCreatePasskey = async () => {
+    setPasskeyError('')
+    setPasskeySuccess('')
+
+    if (!window.PublicKeyCredential || !navigator.credentials?.create) {
+      setPasskeyError('This browser does not support passkey registration')
+      return
+    }
+
+    try {
+      const options = await api.getPasskeyRegistrationOptions()
+      const publicKeyOptions: PublicKeyCredentialCreationOptions = {
+        challenge: base64UrlToUint8Array(options.challenge),
+        rp: options.rp,
+        user: {
+          ...options.user,
+          id: base64UrlToUint8Array(options.user.id),
+        },
+        pubKeyCredParams: options.pubKeyCredParams.map((param) => ({
+          type: 'public-key' as const,
+          alg: param.alg,
+        })),
+        timeout: options.timeout,
+        attestation: options.attestation as AttestationConveyancePreference,
+        authenticatorSelection: {
+          residentKey: options.authenticatorSelection.residentKey as ResidentKeyRequirement,
+          userVerification: options.authenticatorSelection.userVerification as UserVerificationRequirement,
+        },
+        excludeCredentials: options.excludeCredentials.map((existing) => ({
+          type: 'public-key' as const,
+          id: base64UrlToUint8Array(existing.id),
+        })),
+      }
+      const credential = await navigator.credentials.create({
+        publicKey: publicKeyOptions,
+      })
+
+      if (!credential || credential.type !== 'public-key') {
+        throw new Error('No passkey was created')
+      }
+
+      const passkey = credential as PublicKeyCredential
+      const response = passkey.response as AuthenticatorAttestationResponse
+      const publicKey = response.getPublicKey()
+      if (!publicKey) {
+        throw new Error('Your authenticator did not return a usable public key')
+      }
+
+      await createPasskey.mutateAsync({
+        flowId: options.flowId,
+        label: passkeyLabel.trim() || undefined,
+        credential: {
+          id: passkey.id,
+          rawId: uint8ArrayToBase64Url(passkey.rawId),
+          type: passkey.type,
+          response: {
+            clientDataJSON: uint8ArrayToBase64Url(response.clientDataJSON),
+            attestationObject: uint8ArrayToBase64Url(response.attestationObject),
+            authenticatorData: uint8ArrayToBase64Url(response.getAuthenticatorData()),
+            publicKey: uint8ArrayToBase64Url(publicKey),
+            publicKeyAlgorithm: response.getPublicKeyAlgorithm(),
+            transports: response.getTransports(),
+          },
+        },
+      })
+
+      setPasskeyLabel('')
+      setPasskeySuccess('Passkey added')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to register passkey'
+      setPasskeyError(message)
+    }
+  }
+
+  const handleRenamePasskey = async (credentialId: string) => {
+    setPasskeyError('')
+    setPasskeySuccess('')
+
+    if (!editingPasskeyLabel.trim()) {
+      setPasskeyError('Passkey label is required')
+      return
+    }
+
+    try {
+      await renamePasskey.mutateAsync({
+        credentialId,
+        label: editingPasskeyLabel.trim(),
+      })
+      setEditingPasskeyId(null)
+      setEditingPasskeyLabel('')
+      setPasskeySuccess('Passkey renamed')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to rename passkey'
+      setPasskeyError(message)
+    }
+  }
+
+  const handleRemovePasskey = async (credentialId: string) => {
+    setPasskeyError('')
+    setPasskeySuccess('')
+
+    if (!window.confirm('Remove this passkey from your account?')) {
+      return
+    }
+
+    try {
+      await removePasskey.mutateAsync(credentialId)
+      setPasskeySuccess('Passkey removed')
+      if (editingPasskeyId === credentialId) {
+        setEditingPasskeyId(null)
+        setEditingPasskeyLabel('')
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to remove passkey'
+      setPasskeyError(message)
     }
   }
 
@@ -433,6 +580,121 @@ export function SettingsPage() {
           )}
           {totpSuccess && (
             <p className="text-sm text-green-600">{totpSuccess}</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Security - Passkeys */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
+              <Key className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle>Passkeys</CardTitle>
+              <CardDescription>
+                Register device-bound passkeys for passwordless sign-in
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,320px)_auto] md:items-end">
+            <div>
+              <label className="text-sm font-medium">New Passkey Label</label>
+              <Input
+                value={passkeyLabel}
+                onChange={(e) => setPasskeyLabel(e.target.value)}
+                className="mt-1.5"
+                placeholder="MacBook Pro, iPhone, Security Key"
+              />
+            </div>
+            <Button onClick={handleCreatePasskey} disabled={createPasskey.isPending}>
+              {createPasskey.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Key className="h-4 w-4" />}
+              Add Passkey
+            </Button>
+          </div>
+
+          {passkeys.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading passkeys…
+            </div>
+          ) : passkeys.data?.passkeys.length ? (
+            <div className="space-y-3">
+              {passkeys.data.passkeys.map((passkey) => (
+                <div key={passkey.credentialId} className="rounded-lg border p-4 space-y-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="font-medium">{passkey.label}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Registered {new Date(passkey.createdAt).toLocaleDateString()}
+                        {passkey.lastUsedAt ? ` · Last used ${new Date(passkey.lastUsedAt).toLocaleDateString()}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setEditingPasskeyId(passkey.credentialId)
+                          setEditingPasskeyLabel(passkey.label)
+                        }}
+                      >
+                        Rename
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleRemovePasskey(passkey.credentialId)}
+                        disabled={removePasskey.isPending}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+
+                  {editingPasskeyId === passkey.credentialId && (
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,280px)_auto_auto] md:items-end">
+                      <div>
+                        <label className="text-sm font-medium">Passkey Label</label>
+                        <Input
+                          value={editingPasskeyLabel}
+                          onChange={(e) => setEditingPasskeyLabel(e.target.value)}
+                          className="mt-1.5"
+                        />
+                      </div>
+                      <Button
+                        onClick={() => handleRenamePasskey(passkey.credentialId)}
+                        disabled={renamePasskey.isPending}
+                      >
+                        {renamePasskey.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                        Save
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setEditingPasskeyId(null)
+                          setEditingPasskeyLabel('')
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No passkeys registered yet.
+            </p>
+          )}
+
+          {passkeyError && (
+            <p className="text-sm text-destructive">{passkeyError}</p>
+          )}
+          {passkeySuccess && (
+            <p className="text-sm text-green-600">{passkeySuccess}</p>
           )}
         </CardContent>
       </Card>
