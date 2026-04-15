@@ -2,77 +2,43 @@ package com.arkil.credential.passkey;
 
 import com.arkil.client.AuthModule;
 import com.arkil.policy.ClientContextHolder;
+import com.arkil.user.ArkilUser;
+import com.arkil.user.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.savedrequest.SavedRequest;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
- * WebAuthn/Passkey REST API stub.
- * Full implementation requires webauthn4j or Spring Security WebAuthn support.
+ * WebAuthn/Passkey REST API for hosted authentication.
  */
 @RestController
 @RequestMapping("/webauthn")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "WebAuthn", description = "Passkey/WebAuthn registration and authentication")
 public class PasskeyController {
 
     private final ClientContextHolder clientContextHolder;
-    private final PasskeyCredentialRepository passkeyCredentialRepository;
-
-    @PostMapping("/register/options")
-    @Operation(summary = "Get registration options", description = "Get WebAuthn registration challenge")
-    public ResponseEntity<Map<String, Object>> getRegistrationOptions(@RequestParam UUID userId) {
-        checkModuleEnabled();
-
-        // TODO: Implement with webauthn4j
-        // This is a stub returning the structure
-        return ResponseEntity.ok(Map.of(
-                "challenge", java.util.Base64.getEncoder().encodeToString(new byte[32]),
-                "rp", Map.of(
-                        "name", "Arkil",
-                        "id", "localhost"
-                ),
-                "user", Map.of(
-                        "id", userId.toString(),
-                        "name", "user@example.com",
-                        "displayName", "User"
-                ),
-                "pubKeyCredParams", java.util.List.of(
-                        Map.of("type", "public-key", "alg", -7),
-                        Map.of("type", "public-key", "alg", -257)
-                ),
-                "timeout", 60000,
-                "attestation", "none",
-                "authenticatorSelection", Map.of(
-                        "residentKey", "preferred",
-                        "userVerification", "preferred"
-                )
-        ));
-    }
-
-    @PostMapping("/register")
-    @Operation(summary = "Complete registration", description = "Verify and store WebAuthn credential")
-    public ResponseEntity<Map<String, Object>> completeRegistration(
-            @RequestParam UUID userId,
-            @RequestBody Map<String, Object> credential) {
-
-        checkModuleEnabled();
-
-        // TODO: Implement credential verification with webauthn4j
-        // For now, return a stub response
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Passkey registration is not yet fully implemented",
-                "credentialId", "stub-credential-id"
-        ));
-    }
+    private final PasskeyService passkeyService;
+    private final UserRepository userRepository;
 
     @PostMapping("/authenticate/options")
     @Operation(summary = "Get authentication options", description = "Get WebAuthn authentication challenge")
@@ -80,36 +46,42 @@ public class PasskeyController {
             @RequestParam(required = false) UUID userId) {
 
         checkModuleEnabled();
-
-        // TODO: Implement with webauthn4j
-        return ResponseEntity.ok(Map.of(
-                "challenge", java.util.Base64.getEncoder().encodeToString(new byte[32]),
-                "timeout", 60000,
-                "rpId", "localhost",
-                "userVerification", "preferred",
-                "allowCredentials", userId != null ?
-                        passkeyCredentialRepository.findByUserId(userId).stream()
-                                .map(c -> Map.of(
-                                        "type", "public-key",
-                                        "id", c.getCredentialId()
-                                ))
-                                .toList() :
-                        java.util.List.of()
-        ));
+        return ResponseEntity.ok(passkeyService.issueAuthenticationOptions(userId).options());
     }
 
     @PostMapping("/authenticate")
     @Operation(summary = "Complete authentication", description = "Verify WebAuthn assertion")
     public ResponseEntity<Map<String, Object>> completeAuthentication(
-            @RequestBody Map<String, Object> assertion) {
+            @RequestBody Map<String, Object> assertion,
+            HttpServletRequest request) {
 
         checkModuleEnabled();
 
-        // TODO: Implement assertion verification with webauthn4j
-        return ResponseEntity.ok(Map.of(
-                "success", false,
-                "message", "Passkey authentication is not yet fully implemented"
-        ));
+        try {
+            PasskeyService.AuthenticationResult result = passkeyService.completeAuthentication(assertion);
+            ArkilUser user = result.user();
+            if (!Boolean.TRUE.equals(user.getEnabled())) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Account is disabled.");
+            }
+
+            createAuthenticatedSession(user, request);
+
+            String redirectUrl = resolveRedirectUrl(request);
+            log.info("Passkey login successful for user {}", user.getEmail());
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Passkey authentication succeeded.",
+                    "redirectUrl", redirectUrl,
+                    "user", Map.of(
+                            "id", user.getId().toString(),
+                            "email", user.getEmail(),
+                            "displayName", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername()
+                    )
+            ));
+        } catch (PasskeyValidationException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     private void checkModuleEnabled() {
@@ -118,5 +90,42 @@ public class PasskeyController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Passkey authentication is not enabled for this client");
         }
+    }
+
+    private void createAuthenticatedSession(ArkilUser user, HttpServletRequest request) {
+        Set<SimpleGrantedAuthority> authorities = user.getRoles().stream()
+                .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getName()))
+                .collect(Collectors.toSet());
+
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                user.getId().toString(),
+                null,
+                authorities
+        ));
+        SecurityContextHolder.setContext(context);
+
+        HttpSession session = request.getSession(true);
+        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, context);
+
+        user.setLastLoginAt(Instant.now());
+        userRepository.save(user);
+    }
+
+    private String resolveRedirectUrl(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            Object savedRequest = session.getAttribute("SPRING_SECURITY_SAVED_REQUEST");
+            if (savedRequest instanceof SavedRequest requestToResume) {
+                return requestToResume.getRedirectUrl();
+            }
+            Object socialReturnTo = session.getAttribute(com.arkil.auth.AuthSessionAttributes.SOCIAL_LOGIN_RETURN_TO);
+            if (socialReturnTo instanceof String returnTo && !returnTo.isBlank()) {
+                session.removeAttribute(com.arkil.auth.AuthSessionAttributes.SOCIAL_LOGIN_RETURN_TO);
+                return returnTo;
+            }
+        }
+
+        return "/";
     }
 }
