@@ -285,6 +285,17 @@
         .hidden {
             display: none !important;
         }
+
+        .passkey-status {
+            margin-top: 12px;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.7);
+            text-align: center;
+        }
+
+        .passkey-status.error {
+            color: #ff9f9f;
+        }
     </style>
 </head>
 <body>
@@ -405,9 +416,10 @@
 
             <!-- Passkey section -->
             <div th:if="${clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).PASSKEY)}" class="passkey-section">
-                <button class="passkey-btn" onclick="handlePasskeyLogin()">
+                <button id="passkeyButton" class="passkey-btn" type="button" onclick="handlePasskeyLogin()">
                     &#128274; Sign in with Passkey
                 </button>
+                <p id="passkeyStatus" class="passkey-status hidden"></p>
             </div>
         </div>
 
@@ -422,10 +434,134 @@
         </p>
     </div>
 
-    <script>
+    <script th:inline="javascript">
+        const passkeyClientId = /*[[${clientContext != null and clientContext.resolved ? clientContext.clientId : ''}]]*/ '';
+
+        function base64UrlToUint8Array(value) {
+            const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+            const binary = window.atob(padded);
+            return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+        }
+
+        function uint8ArrayToBase64Url(buffer) {
+            const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+            let binary = '';
+            bytes.forEach((byte) => {
+                binary += String.fromCharCode(byte);
+            });
+            return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+        }
+
+        function showPasskeyStatus(message, isError = false) {
+            const status = document.getElementById('passkeyStatus');
+            if (!status) {
+                return;
+            }
+
+            status.textContent = message;
+            status.classList.remove('hidden', 'error');
+            if (isError) {
+                status.classList.add('error');
+            }
+        }
+
+        function setPasskeyLoading(isLoading) {
+            const button = document.getElementById('passkeyButton');
+            if (!button) {
+                return;
+            }
+
+            button.disabled = isLoading;
+            button.classList.toggle('disabled', isLoading);
+            button.textContent = isLoading ? 'Checking passkey…' : '🔒 Sign in with Passkey';
+        }
+
         function handlePasskeyLogin() {
-            // WebAuthn login will be implemented in Phase 4
-            alert('Passkey authentication will be available soon!');
+            if (!window.PublicKeyCredential || !navigator.credentials?.get) {
+                showPasskeyStatus('This browser does not support passkeys.', true);
+                return;
+            }
+
+            showPasskeyStatus('Waiting for your passkey…');
+            setPasskeyLoading(true);
+
+            fetch(`/webauthn/authenticate/options?client_id=${encodeURIComponent(passkeyClientId)}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+                .then(async (response) => {
+                    const body = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(body.message || 'Could not start passkey sign-in.');
+                    }
+                    return body;
+                })
+                .then(async (options) => {
+                    const publicKey = {
+                        ...options,
+                        challenge: base64UrlToUint8Array(options.challenge),
+                        allowCredentials: Array.isArray(options.allowCredentials)
+                            ? options.allowCredentials.map((credential) => ({
+                                ...credential,
+                                id: base64UrlToUint8Array(credential.id)
+                            }))
+                            : []
+                    };
+
+                    const assertion = await navigator.credentials.get({ publicKey });
+                    if (!assertion) {
+                        throw new Error('No passkey assertion was returned.');
+                    }
+
+                    const credential = assertion;
+                    const jsonPayload = {
+                        flowId: options.flowId,
+                        credential: {
+                            id: credential.id,
+                            rawId: uint8ArrayToBase64Url(credential.rawId),
+                            type: credential.type,
+                            response: {
+                                clientDataJSON: uint8ArrayToBase64Url(credential.response.clientDataJSON),
+                                authenticatorData: uint8ArrayToBase64Url(credential.response.authenticatorData),
+                                signature: uint8ArrayToBase64Url(credential.response.signature),
+                                userHandle: credential.response.userHandle
+                                    ? uint8ArrayToBase64Url(credential.response.userHandle)
+                                    : null
+                            }
+                        }
+                    };
+
+                    return fetch(`/webauthn/authenticate?client_id=${encodeURIComponent(passkeyClientId)}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(jsonPayload)
+                    });
+                })
+                .then(async (response) => {
+                    const body = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(body.message || 'Passkey sign-in failed.');
+                    }
+
+                    if (body.redirectUrl) {
+                        window.location.assign(body.redirectUrl);
+                        return;
+                    }
+
+                    window.location.reload();
+                })
+                .catch((error) => {
+                    const message = error?.message?.includes('The operation either timed out or was not allowed')
+                        ? 'Passkey sign-in was canceled.'
+                        : error?.message || 'Passkey sign-in failed.';
+                    showPasskeyStatus(message, true);
+                    setPasskeyLoading(false);
+                });
         }
     </script>
 </body>

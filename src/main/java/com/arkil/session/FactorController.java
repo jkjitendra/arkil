@@ -2,7 +2,11 @@ package com.arkil.session;
 
 import com.arkil.credential.passkey.PasskeyCredential;
 import com.arkil.credential.passkey.PasskeyCredentialRepository;
+import com.arkil.credential.passkey.PasskeyService;
+import com.arkil.credential.passkey.PasskeyValidationException;
 import com.arkil.credential.totp.TotpService;
+import com.arkil.user.ArkilUser;
+import com.arkil.user.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,6 +42,8 @@ public class FactorController {
 
     private final TotpService totpService;
     private final PasskeyCredentialRepository passkeyCredentialRepository;
+    private final PasskeyService passkeyService;
+    private final UserRepository userRepository;
 
     @Value("${arkil.mfa.totp.issuer:Arkil}")
     private String totpIssuer;
@@ -147,6 +153,61 @@ public class FactorController {
     // Passkey Factor (WebAuthn) — listing and removal
     // ─────────────────────────────────────────────────────────────────
 
+    @PostMapping("/passkey/register/options")
+    @Operation(summary = "Start passkey registration")
+    public ResponseEntity<Map<String, Object>> registrationOptions(Authentication authentication) {
+        UUID userId = extractUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+        }
+
+        ArkilUser user = userRepository.findById(userId).orElse(null);
+        if (user == null || !Boolean.TRUE.equals(user.getEnabled())) {
+            return ResponseEntity.status(404).body(Map.of(
+                    "error", "user_not_found",
+                    "message", "Signed-in user was not found."
+            ));
+        }
+
+        return ResponseEntity.ok(passkeyService.issueRegistrationOptions(user).options());
+    }
+
+    @PostMapping("/passkey/register")
+    @Operation(summary = "Complete passkey registration")
+    public ResponseEntity<Map<String, Object>> completeRegistration(
+            Authentication authentication,
+            @RequestBody Map<String, Object> request) {
+
+        UUID userId = extractUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+        }
+
+        ArkilUser user = userRepository.findById(userId).orElse(null);
+        if (user == null || !Boolean.TRUE.equals(user.getEnabled())) {
+            return ResponseEntity.status(404).body(Map.of(
+                    "error", "user_not_found",
+                    "message", "Signed-in user was not found."
+            ));
+        }
+
+        try {
+            String label = request.get("label") instanceof String text ? text : null;
+            PasskeyCredential credential = passkeyService.completeRegistration(user, request, label);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Passkey registered",
+                    "passkey", passkeyService.passkeySummary(credential)
+            ));
+        } catch (PasskeyValidationException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "passkey_registration_failed",
+                    "message", e.getMessage()
+            ));
+        }
+    }
+
     @GetMapping("/passkey")
     @Operation(summary = "List registered passkeys")
     public ResponseEntity<Map<String, Object>> listPasskeys(Authentication authentication) {
@@ -157,16 +218,40 @@ public class FactorController {
 
         List<PasskeyCredential> passkeys = passkeyCredentialRepository.findByUserId(userId);
         List<Map<String, Object>> passkeyList = passkeys.stream()
-                .map(pk -> Map.<String, Object>of(
-                        "id", pk.getId().toString(),
-                        "credentialId", pk.getCredentialId(),
-                        "label", pk.getLabel() != null ? pk.getLabel() : "Passkey",
-                        "createdAt", pk.getCreatedAt().toString(),
-                        "lastUsedAt", pk.getLastUsedAt() != null ? pk.getLastUsedAt().toString() : ""
-                ))
+                .map(passkeyService::passkeySummary)
                 .toList();
 
         return ResponseEntity.ok(Map.of("passkeys", passkeyList));
+    }
+
+    @PatchMapping("/passkey/{credentialId}")
+    @Operation(summary = "Rename a passkey")
+    public ResponseEntity<Map<String, Object>> renamePasskey(
+            Authentication authentication,
+            @PathVariable String credentialId,
+            @Valid @RequestBody PasskeyLabelRequest request) {
+
+        UUID userId = extractUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+        }
+
+        PasskeyCredential passkey = passkeyCredentialRepository.findByCredentialId(credentialId).orElse(null);
+        if (passkey == null || !passkey.getUser().getId().equals(userId)) {
+            return ResponseEntity.status(404).body(Map.of(
+                    "error", "passkey_not_found",
+                    "message", "Passkey not found."
+            ));
+        }
+
+        passkey.setLabel(request.getLabel().trim());
+        passkeyCredentialRepository.save(passkey);
+
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Passkey renamed",
+                "passkey", passkeyService.passkeySummary(passkey)
+        ));
     }
 
     @DeleteMapping("/passkey/{credentialId}")
@@ -218,5 +303,11 @@ public class FactorController {
     public static class TotpVerifyRequest {
         @NotBlank(message = "TOTP code is required")
         private String code;
+    }
+
+    @Data
+    public static class PasskeyLabelRequest {
+        @NotBlank(message = "Passkey label is required")
+        private String label;
     }
 }
