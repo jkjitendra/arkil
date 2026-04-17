@@ -1,5 +1,7 @@
 package com.arkil.session;
 
+import com.arkil.audit.ActorType;
+import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
 import com.arkil.credential.social.SocialIdentity;
@@ -10,6 +12,7 @@ import com.arkil.user.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -46,6 +49,7 @@ public class UserMeController {
     private final PasswordCredentialRepository passwordCredentialRepository;
     private final PasswordEncoder passwordEncoder;
     private final SocialIdentityRepository socialIdentityRepository;
+    private final ProjectWebhookEventService projectWebhookEventService;
 
     // ─────────────────────────────────────────────────────────────────
     // Profile
@@ -98,7 +102,8 @@ public class UserMeController {
     @Operation(summary = "Update current user profile")
     public ResponseEntity<?> updateProfile(
             Authentication authentication,
-            @Valid @RequestBody UpdateProfileRequest request) {
+            @Valid @RequestBody UpdateProfileRequest request,
+            HttpServletRequest httpRequest) {
 
         ArkilUser user = resolveUser(authentication);
         if (user == null) {
@@ -110,6 +115,16 @@ public class UserMeController {
         }
 
         userRepository.save(user);
+        projectWebhookEventService.userUpdated(
+                user,
+                ActorType.USER,
+                user.getId().toString(),
+                httpRequest,
+                null,
+                user.getTenant().getId(),
+                List.of("displayName"),
+                "self_service"
+        );
         log.info("User {} updated profile", user.getEmail());
 
         return ResponseEntity.ok(Map.of(
@@ -126,7 +141,8 @@ public class UserMeController {
     @Operation(summary = "Change password (requires current password)")
     public ResponseEntity<?> changePassword(
             Authentication authentication,
-            @Valid @RequestBody ChangePasswordRequest request) {
+            @Valid @RequestBody ChangePasswordRequest request,
+            HttpServletRequest httpRequest) {
 
         ArkilUser user = resolveUser(authentication);
         if (user == null) {
@@ -142,6 +158,15 @@ public class UserMeController {
                     .passwordHash(passwordEncoder.encode(request.getNewPassword()))
                     .build();
             passwordCredentialRepository.save(newCredential);
+            projectWebhookEventService.passwordChanged(
+                    user,
+                    ActorType.USER,
+                    user.getId().toString(),
+                    httpRequest,
+                    null,
+                    user.getTenant().getId(),
+                    true
+            );
             log.info("User {} set initial password", user.getEmail());
             return ResponseEntity.ok(Map.of("message", "Password set successfully"));
         }
@@ -166,6 +191,15 @@ public class UserMeController {
 
         credential.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         passwordCredentialRepository.save(credential);
+        projectWebhookEventService.passwordChanged(
+                user,
+                ActorType.USER,
+                user.getId().toString(),
+                httpRequest,
+                null,
+                user.getTenant().getId(),
+                false
+        );
         log.info("User {} changed password", user.getEmail());
 
         return ResponseEntity.ok(Map.of("message", "Password changed successfully"));
@@ -177,7 +211,7 @@ public class UserMeController {
 
     @DeleteMapping
     @Operation(summary = "Delete current user account")
-    public ResponseEntity<Map<String, String>> deleteAccount(Authentication authentication) {
+    public ResponseEntity<Map<String, String>> deleteAccount(Authentication authentication, HttpServletRequest httpRequest) {
         ArkilUser user = resolveUser(authentication);
         if (user == null) {
             return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
@@ -186,6 +220,16 @@ public class UserMeController {
         // Disable the account (soft delete — don't hard-delete to preserve audit trail)
         user.setEnabled(false);
         userRepository.save(user);
+        projectWebhookEventService.userDeleted(
+                user,
+                ActorType.USER,
+                user.getId().toString(),
+                httpRequest,
+                null,
+                user.getTenant().getId(),
+                "self_service",
+                true
+        );
 
         log.warn("User {} requested account deletion — account disabled", user.getEmail());
 
