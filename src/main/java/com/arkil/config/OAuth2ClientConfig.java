@@ -4,6 +4,7 @@ import com.arkil.auth.AuthSessionAttributes;
 import com.arkil.audit.ActorType;
 import com.arkil.audit.AuditEventType;
 import com.arkil.audit.AuditService;
+import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.client.AuthModule;
 import com.arkil.credential.social.OAuth2IdentityService;
 import com.arkil.policy.ClientContext;
@@ -13,6 +14,7 @@ import com.arkil.project.ProjectRepository;
 import com.arkil.tenant.Tenant;
 import com.arkil.tenant.TenantRepository;
 import com.arkil.user.ArkilUser;
+import com.arkil.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
@@ -52,6 +54,8 @@ public class OAuth2ClientConfig {
     private final AuditService auditService;
     private final ProjectRepository projectRepository;
     private final TenantRepository tenantRepository;
+    private final ProjectWebhookEventService projectWebhookEventService;
+    private final UserRepository userRepository;
 
     /**
      * Custom OAuth2UserService that links external identities to ArkilUsers.
@@ -168,6 +172,17 @@ public class OAuth2ClientConfig {
                 ClientContext context = clientContextHolder.getContext();
                 auditService.logSuccess(AuditEventType.AUTH_LOGIN_SUCCESS, username, ActorType.USER,
                         context.getClientId(), request);
+
+                resolveAuthenticatedUser(authentication).ifPresent(user ->
+                        projectWebhookEventService.sessionCreated(
+                                user,
+                                ActorType.USER,
+                                user.getId().toString(),
+                                request,
+                                context.getClientId(),
+                                user.getTenant() != null ? user.getTenant().getId() : null,
+                                "social"
+                        ));
             }
 
             log.info("OAuth2 login successful for user: {}", username);
@@ -178,6 +193,25 @@ public class OAuth2ClientConfig {
             }
             handler.onAuthenticationSuccess(request, response, authentication);
         };
+    }
+
+    private Optional<ArkilUser> resolveAuthenticatedUser(org.springframework.security.core.Authentication authentication) {
+        if (authentication.getPrincipal() instanceof OAuth2User oauth2User) {
+            Object sub = oauth2User.getAttributes().get("sub");
+            if (sub instanceof String subject) {
+                try {
+                    return userRepository.findById(UUID.fromString(subject));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+
+            Object email = oauth2User.getAttributes().get("email");
+            if (email instanceof String emailAddress) {
+                return userRepository.findByEmail(emailAddress);
+            }
+        }
+
+        return Optional.empty();
     }
 
     @Bean
