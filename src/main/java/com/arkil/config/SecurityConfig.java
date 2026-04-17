@@ -1,5 +1,7 @@
 package com.arkil.config;
 
+import com.arkil.audit.ActorType;
+import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.policy.EmailNotVerifiedAuthenticationException;
 import com.arkil.policy.InvalidTotpAuthenticationException;
 import com.arkil.policy.ClientContextFilter;
@@ -9,6 +11,7 @@ import com.arkil.policy.TotpRequiredAuthenticationException;
 import com.arkil.security.LoginRateLimitFilter;
 import com.arkil.security.ProjectCorsConfigurationSource;
 import com.arkil.tenant.TenantContextFilter;
+import com.arkil.user.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -43,6 +46,8 @@ public class SecurityConfig {
     private final OAuth2UserService<OidcUserRequest, OidcUser> oidcUserService;
     private final AuthenticationSuccessHandler oauth2SuccessHandler;
     private final AuthenticationFailureHandler oauth2FailureHandler;
+    private final ProjectWebhookEventService projectWebhookEventService;
+    private final UserRepository userRepository;
 
     public SecurityConfig(LoginRateLimitFilter loginRateLimitFilter,
                           ClientContextFilter clientContextFilter,
@@ -54,7 +59,9 @@ public class SecurityConfig {
                           OAuth2UserService<OAuth2UserRequest, OAuth2User> oauth2UserService,
                           OAuth2UserService<OidcUserRequest, OidcUser> oidcUserService,
                           AuthenticationSuccessHandler oauth2SuccessHandler,
-                          AuthenticationFailureHandler oauth2FailureHandler) {
+                          AuthenticationFailureHandler oauth2FailureHandler,
+                          ProjectWebhookEventService projectWebhookEventService,
+                          UserRepository userRepository) {
         this.loginRateLimitFilter = loginRateLimitFilter;
         this.clientContextFilter = clientContextFilter;
         this.policyEnforcementFilter = policyEnforcementFilter;
@@ -66,6 +73,8 @@ public class SecurityConfig {
         this.oidcUserService = oidcUserService;
         this.oauth2SuccessHandler = oauth2SuccessHandler;
         this.oauth2FailureHandler = oauth2FailureHandler;
+        this.projectWebhookEventService = projectWebhookEventService;
+        this.userRepository = userRepository;
     }
 
     @Bean
@@ -105,6 +114,7 @@ public class SecurityConfig {
                 )
                 .formLogin(form -> form
                         .loginPage("/login")
+                        .successHandler(formLoginSuccessHandler())
                         .failureHandler((request, response, exception) -> {
                             UriComponentsBuilder redirect = UriComponentsBuilder.fromPath("/login");
                             String clientId = request.getParameter("client_id");
@@ -189,5 +199,25 @@ public class SecurityConfig {
                 .addFilterAfter(tenantContextFilter, PolicyEnforcementFilter.class);
 
         return http.build();
+    }
+
+    private AuthenticationSuccessHandler formLoginSuccessHandler() {
+        var delegate = new org.springframework.security.web.authentication.SavedRequestAwareAuthenticationSuccessHandler();
+        delegate.setDefaultTargetUrl("/");
+
+        return (request, response, authentication) -> {
+            userRepository.findById(java.util.UUID.fromString(authentication.getName())).ifPresent(user ->
+                    projectWebhookEventService.sessionCreated(
+                            user,
+                            ActorType.USER,
+                            user.getId().toString(),
+                            request,
+                            request.getParameter("client_id"),
+                            user.getTenant() != null ? user.getTenant().getId() : null,
+                            "password"
+                    ));
+
+            delegate.onAuthenticationSuccess(request, response, authentication);
+        };
     }
 }
