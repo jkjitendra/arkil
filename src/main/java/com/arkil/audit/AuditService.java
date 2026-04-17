@@ -68,16 +68,36 @@ public class AuditService {
                                     HttpServletRequest request,
                                     UUID projectId,
                                     Map<String, Object> webhookPayload) {
-        // Log the audit event
+        logEventWithWebhook(eventType, actorId, actorType, targetId, outcome, details, request,
+                projectId != null ? Map.of(projectId, webhookPayload) : Map.of());
+    }
+
+    @Async
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void logEventWithWebhook(AuditEventType eventType,
+                                    String actorId,
+                                    ActorType actorType,
+                                    String targetId,
+                                    AuditOutcome outcome,
+                                    String details,
+                                    HttpServletRequest request,
+                                    Map<UUID, Map<String, Object>> webhookPayloadsByProject) {
         logEvent(eventType, actorId, actorType, targetId, outcome, details, request);
 
-        // Dispatch webhook if the event was successful and projectId is provided
-        if (outcome == AuditOutcome.SUCCESS && projectId != null) {
-            String webhookEvent = mapToWebhookEvent(eventType);
-            if (webhookEvent != null) {
-                webhookDispatchService.dispatchEvent(projectId, webhookEvent, webhookPayload);
-            }
+        if (outcome != AuditOutcome.SUCCESS || webhookPayloadsByProject == null || webhookPayloadsByProject.isEmpty()) {
+            return;
         }
+
+        String webhookEvent = mapToWebhookEvent(eventType);
+        if (webhookEvent == null) {
+            return;
+        }
+
+        webhookPayloadsByProject.forEach((projectId, payload) -> {
+            if (projectId != null && payload != null) {
+                webhookDispatchService.dispatchEvent(projectId, webhookEvent, payload);
+            }
+        });
     }
 
     /**
@@ -136,4 +156,3 @@ public class AuditService {
         return request.getRemoteAddr();
     }
 }
-
