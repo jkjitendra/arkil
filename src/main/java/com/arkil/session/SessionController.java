@@ -3,6 +3,7 @@ package com.arkil.session;
 import com.arkil.audit.ActorType;
 import com.arkil.audit.AuditEventType;
 import com.arkil.audit.AuditService;
+import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
 import com.arkil.credential.totp.TotpService;
@@ -58,6 +59,7 @@ public class SessionController {
     private final EmailTokenService emailTokenService;
     private final TotpService totpService;
     private final AuditService auditService;
+    private final ProjectWebhookEventService projectWebhookEventService;
     private final JwtEncoder jwtEncoder;
 
     @Value("${arkil.session.cookie.same-site:None}")
@@ -81,6 +83,7 @@ public class SessionController {
                              EmailTokenService emailTokenService,
                              TotpService totpService,
                              AuditService auditService,
+                             ProjectWebhookEventService projectWebhookEventService,
                              JWKSource<SecurityContext> jwkSource) {
         this.refreshTokenService = refreshTokenService;
         this.userRepository = userRepository;
@@ -89,6 +92,7 @@ public class SessionController {
         this.emailTokenService = emailTokenService;
         this.totpService = totpService;
         this.auditService = auditService;
+        this.projectWebhookEventService = projectWebhookEventService;
         this.jwtEncoder = new NimbusJwtEncoder(jwkSource);
     }
 
@@ -207,6 +211,15 @@ public class SessionController {
 
         auditService.logSuccess(AuditEventType.AUTH_LOGIN_SUCCESS, user.getId().toString(),
                 ActorType.USER, clientId, httpRequest);
+        projectWebhookEventService.sessionCreated(
+                user,
+                ActorType.USER,
+                user.getId().toString(),
+                httpRequest,
+                request.getClientId(),
+                user.getTenant() != null ? user.getTenant().getId() : null,
+                request.getMagicLinkToken() != null ? "magic_link" : "password"
+        );
 
         log.info("Session created for user: {}", user.getEmail());
 
