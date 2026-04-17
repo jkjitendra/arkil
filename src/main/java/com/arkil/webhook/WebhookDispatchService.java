@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -61,11 +62,9 @@ public class WebhookDispatchService {
      * Send a test/ping event to a specific webhook.
      */
     public boolean sendPing(Webhook webhook) {
-        Map<String, Object> payload = Map.of(
-                "type", "webhook.test",
-                "data", Map.of("message", "This is a test ping from Arkil"),
-                "timestamp", Instant.now().toString()
-        );
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("event", "webhook.test");
+        payload.put("data", Map.of("message", "This is a test ping from Arkil"));
 
         return deliverToWebhook(webhook, "webhook.test", payload);
     }
@@ -75,16 +74,11 @@ public class WebhookDispatchService {
      */
     private boolean deliverToWebhook(Webhook webhook, String eventType, Map<String, Object> payload) {
         String deliveryId = UUID.randomUUID().toString();
-        String timestamp = String.valueOf(Instant.now().getEpochSecond());
+        Instant now = Instant.now();
+        String timestamp = String.valueOf(now.getEpochSecond());
 
         try {
-            // Build the full event envelope
-            Map<String, Object> envelope = Map.of(
-                    "id", deliveryId,
-                    "type", eventType,
-                    "timestamp", timestamp,
-                    "data", payload
-            );
+            Map<String, Object> envelope = buildEnvelope(deliveryId, eventType, now, payload);
 
             String body = objectMapper.writeValueAsString(envelope);
             String signature = computeSignature(webhook.getSecret(), timestamp, body);
@@ -94,16 +88,16 @@ public class WebhookDispatchService {
                     int statusCode = sendHttpRequest(webhook.getUrl(), body, signature, eventType, deliveryId, timestamp);
 
                     if (statusCode >= 200 && statusCode < 300) {
-                        log.debug("Webhook delivered: id={}, event={}, url={}, status={}",
-                                deliveryId, eventType, webhook.getUrl(), statusCode);
+                        log.info("Webhook delivered: id={}, event={}, project={}, url={}, status={}",
+                                deliveryId, eventType, webhook.getProjectId(), webhook.getUrl(), statusCode);
                         return true;
                     }
 
-                    log.warn("Webhook delivery failed: id={}, event={}, url={}, status={}, attempt={}/{}",
-                            deliveryId, eventType, webhook.getUrl(), statusCode, attempt + 1, MAX_RETRIES);
+                    log.warn("Webhook delivery failed: id={}, event={}, project={}, url={}, status={}, attempt={}/{}",
+                            deliveryId, eventType, webhook.getProjectId(), webhook.getUrl(), statusCode, attempt + 1, MAX_RETRIES);
                 } catch (Exception e) {
-                    log.warn("Webhook delivery error: id={}, event={}, url={}, attempt={}/{}, error={}",
-                            deliveryId, eventType, webhook.getUrl(), attempt + 1, MAX_RETRIES, e.getMessage());
+                    log.warn("Webhook delivery error: id={}, event={}, project={}, url={}, attempt={}/{}, error={}",
+                            deliveryId, eventType, webhook.getProjectId(), webhook.getUrl(), attempt + 1, MAX_RETRIES, e.getMessage());
                 }
 
                 // Wait before retry (except on last attempt)
@@ -117,8 +111,8 @@ public class WebhookDispatchService {
                 }
             }
 
-            log.error("Webhook delivery exhausted retries: id={}, event={}, url={}",
-                    deliveryId, eventType, webhook.getUrl());
+            log.error("Webhook delivery exhausted retries: id={}, event={}, project={}, url={}",
+                    deliveryId, eventType, webhook.getProjectId(), webhook.getUrl());
             return false;
 
         } catch (Exception e) {
@@ -158,7 +152,7 @@ public class WebhookDispatchService {
      * Compute HMAC-SHA256 signature.
      * Signature input: "{timestamp}.{body}" to prevent replay attacks.
      */
-    private String computeSignature(String secret, String timestamp, String body) {
+    String computeSignature(String secret, String timestamp, String body) {
         try {
             String signatureInput = timestamp + "." + body;
             Mac mac = Mac.getInstance("HmacSHA256");
@@ -168,5 +162,14 @@ public class WebhookDispatchService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to compute webhook signature", e);
         }
+    }
+
+    Map<String, Object> buildEnvelope(String deliveryId, String eventType, Instant timestamp, Map<String, Object> payload) {
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("id", deliveryId);
+        envelope.put("event", eventType);
+        envelope.put("timestamp", timestamp.toString());
+        envelope.putAll(payload);
+        return envelope;
     }
 }
