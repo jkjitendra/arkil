@@ -1,10 +1,13 @@
 package com.arkil.admin;
 
+import com.arkil.audit.ActorType;
+import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -34,6 +37,7 @@ import java.util.UUID;
 public class AdminUserController {
 
     private final UserRepository userRepository;
+    private final ProjectWebhookEventService projectWebhookEventService;
 
     @GetMapping
     @Operation(summary = "List users (scoped to tenant)")
@@ -64,13 +68,16 @@ public class AdminUserController {
     public ResponseEntity<?> updateUser(
             @PathVariable UUID userId,
             @RequestBody UpdateUserRequest request,
-            Authentication auth) {
+            Authentication auth,
+            HttpServletRequest httpRequest) {
 
         ArkilUser user = findUserInTenant(userId, auth).orElse(null);
         if (user == null) {
             return ResponseEntity.notFound().build();
         }
 
+        Boolean previousEnabled = user.getEnabled();
+        Boolean previousEmailVerified = user.getEmailVerified();
         if (request.enabled() != null) {
             user.setEnabled(request.enabled());
         }
@@ -79,6 +86,30 @@ public class AdminUserController {
         }
 
         userRepository.save(user);
+        String adminActorId = extractActorId(auth);
+
+        if (request.enabled() != null && !request.enabled().equals(previousEnabled)) {
+            if (Boolean.TRUE.equals(request.enabled())) {
+                projectWebhookEventService.userUnblocked(
+                        user, ActorType.ADMIN, adminActorId, httpRequest, null, user.getTenant().getId());
+            } else {
+                projectWebhookEventService.userBlocked(
+                        user, ActorType.ADMIN, adminActorId, httpRequest, null, user.getTenant().getId(), "admin_update");
+            }
+        }
+
+        if (request.emailVerified() != null && !request.emailVerified().equals(previousEmailVerified)) {
+            projectWebhookEventService.userUpdated(
+                    user,
+                    ActorType.ADMIN,
+                    adminActorId,
+                    httpRequest,
+                    null,
+                    user.getTenant().getId(),
+                    java.util.List.of("emailVerified"),
+                    "admin_console"
+            );
+        }
 
         log.info("Admin updated user {}", userId);
 
@@ -87,13 +118,26 @@ public class AdminUserController {
 
     @DeleteMapping("/{userId}")
     @Operation(summary = "Delete user")
-    public ResponseEntity<Map<String, String>> deleteUser(@PathVariable UUID userId, Authentication auth) {
+    public ResponseEntity<Map<String, String>> deleteUser(@PathVariable UUID userId,
+                                                          Authentication auth,
+                                                          HttpServletRequest httpRequest) {
         ArkilUser user = findUserInTenant(userId, auth).orElse(null);
         if (user == null) {
             return ResponseEntity.notFound().build();
         }
 
-        userRepository.deleteById(userId);
+        user.setEnabled(false);
+        userRepository.save(user);
+        projectWebhookEventService.userDeleted(
+                user,
+                ActorType.ADMIN,
+                extractActorId(auth),
+                httpRequest,
+                null,
+                user.getTenant().getId(),
+                "admin_console",
+                true
+        );
         log.warn("Admin deleted user {}", userId);
 
         return ResponseEntity.ok(Map.of("message", "User deleted"));
@@ -104,7 +148,8 @@ public class AdminUserController {
     public ResponseEntity<?> blockUser(
             @PathVariable UUID userId,
             @RequestBody(required = false) BlockRequest request,
-            Authentication auth) {
+            Authentication auth,
+            HttpServletRequest httpRequest) {
 
         ArkilUser user = findUserInTenant(userId, auth).orElse(null);
         if (user == null) {
@@ -113,6 +158,15 @@ public class AdminUserController {
 
         user.setEnabled(false);
         userRepository.save(user);
+        projectWebhookEventService.userBlocked(
+                user,
+                ActorType.ADMIN,
+                extractActorId(auth),
+                httpRequest,
+                null,
+                user.getTenant().getId(),
+                request != null ? request.reason() : null
+        );
 
         log.warn("Admin blocked user {}: {}", userId, request != null ? request.reason() : "No reason");
 
@@ -121,7 +175,9 @@ public class AdminUserController {
 
     @PostMapping("/{userId}/unblock")
     @Operation(summary = "Unblock user (enable account)")
-    public ResponseEntity<Map<String, String>> unblockUser(@PathVariable UUID userId, Authentication auth) {
+    public ResponseEntity<Map<String, String>> unblockUser(@PathVariable UUID userId,
+                                                           Authentication auth,
+                                                           HttpServletRequest httpRequest) {
         ArkilUser user = findUserInTenant(userId, auth).orElse(null);
         if (user == null) {
             return ResponseEntity.notFound().build();
@@ -129,6 +185,14 @@ public class AdminUserController {
 
         user.setEnabled(true);
         userRepository.save(user);
+        projectWebhookEventService.userUnblocked(
+                user,
+                ActorType.ADMIN,
+                extractActorId(auth),
+                httpRequest,
+                null,
+                user.getTenant().getId()
+        );
 
         log.info("Admin unblocked user {}", userId);
 
@@ -161,6 +225,13 @@ public class AdminUserController {
             }
         }
         return null;
+    }
+
+    private String extractActorId(Authentication auth) {
+        if (auth != null && auth.getPrincipal() instanceof Jwt jwt) {
+            return jwt.getSubject();
+        }
+        return auth != null ? auth.getName() : "admin";
     }
 
     // ─────────────────────────────────────────────────────────────────
