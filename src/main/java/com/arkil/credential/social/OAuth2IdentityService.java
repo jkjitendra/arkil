@@ -1,5 +1,7 @@
 package com.arkil.credential.social;
 
+import com.arkil.audit.ActorType;
+import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.tenant.Tenant;
 import com.arkil.tenant.TenantRepository;
 import com.arkil.user.ArkilUser;
@@ -34,6 +36,7 @@ public class OAuth2IdentityService {
     private final UserRepository userRepository;
     private final TenantRepository tenantRepository;
     private final RoleRepository roleRepository;
+    private final ProjectWebhookEventService projectWebhookEventService;
 
     private static final Pattern SLUG_PATTERN = Pattern.compile("[^a-z0-9-]");
 
@@ -102,11 +105,27 @@ public class OAuth2IdentityService {
         }
 
         // Try to find existing user by email in this tenant
+        boolean[] created = {false};
         ArkilUser user = userRepository.findByTenantIdAndEmail(tenant.getId(), email)
-                .orElseGet(() -> createNewUser(tenant, email, displayName, isDeveloperSignup));
+                .orElseGet(() -> {
+                    created[0] = true;
+                    return createNewUser(tenant, email, displayName, isDeveloperSignup);
+                });
 
         // Link the social identity
         linkSocialIdentity(user, provider, subjectId, email, displayName, pictureUrl);
+
+        if (created[0] && !isDeveloperSignup) {
+            projectWebhookEventService.userCreated(
+                    user,
+                    ActorType.USER,
+                    user.getId().toString(),
+                    null,
+                    null,
+                    tenant.getId(),
+                    "social_login"
+            );
+        }
 
         return user;
     }

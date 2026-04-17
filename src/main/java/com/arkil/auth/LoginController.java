@@ -1,5 +1,7 @@
 package com.arkil.auth;
 
+import com.arkil.audit.ActorType;
+import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.client.AuthModule;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
@@ -53,6 +55,7 @@ public class LoginController {
     private final UserRepository userRepository;
     private final PasswordCredentialRepository passwordCredentialRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ProjectWebhookEventService projectWebhookEventService;
 
     // ─────────────────────────────────────────────────────────────────
     // Login
@@ -275,6 +278,15 @@ public class LoginController {
         // Update last login
         user.setLastLoginAt(Instant.now());
         userRepository.save(user);
+        projectWebhookEventService.sessionCreated(
+                user,
+                ActorType.USER,
+                user.getId().toString(),
+                request,
+                clientContextHolder.hasContext() ? clientContextHolder.getContext().getClientId() : null,
+                user.getTenant() != null ? user.getTenant().getId() : null,
+                "magic_link"
+        );
 
         log.info("Magic link login successful for user: {}", user.getEmail());
         model.addAttribute("success", true);

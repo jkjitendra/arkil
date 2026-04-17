@@ -1,5 +1,7 @@
 package com.arkil.credential.passkey;
 
+import com.arkil.audit.ActorType;
+import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.client.AuthModule;
 import com.arkil.policy.ClientContextHolder;
 import com.arkil.user.ArkilUser;
@@ -39,6 +41,7 @@ public class PasskeyController {
     private final ClientContextHolder clientContextHolder;
     private final PasskeyService passkeyService;
     private final UserRepository userRepository;
+    private final ProjectWebhookEventService projectWebhookEventService;
 
     @PostMapping("/authenticate/options")
     @Operation(summary = "Get authentication options", description = "Get WebAuthn authentication challenge")
@@ -65,6 +68,15 @@ public class PasskeyController {
             }
 
             createAuthenticatedSession(user, request);
+            projectWebhookEventService.sessionCreated(
+                    user,
+                    ActorType.USER,
+                    user.getId().toString(),
+                    request,
+                    request.getParameter("client_id"),
+                    user.getTenant() != null ? user.getTenant().getId() : null,
+                    "passkey"
+            );
 
             String redirectUrl = resolveRedirectUrl(request);
             log.info("Passkey login successful for user {}", user.getEmail());

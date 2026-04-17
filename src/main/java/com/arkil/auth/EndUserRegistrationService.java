@@ -1,5 +1,7 @@
 package com.arkil.auth;
 
+import com.arkil.audit.ActorType;
+import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
 import com.arkil.email.EmailTokenService;
@@ -36,6 +38,7 @@ public class EndUserRegistrationService {
     private final PasswordCredentialRepository passwordCredentialRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailTokenService emailTokenService;
+    private final ProjectWebhookEventService projectWebhookEventService;
 
     /**
      * Register an end-user for a specific project's tenant.
@@ -87,6 +90,15 @@ public class EndUserRegistrationService {
 
         // Send verification email
         emailTokenService.sendVerificationEmail(user.getId());
+        projectWebhookEventService.userCreated(
+                user,
+                ActorType.USER,
+                user.getId().toString(),
+                null,
+                clientId,
+                tenant.getId(),
+                "email_password_signup"
+        );
 
         log.info("End-user registered: email={}, tenant={}, clientId={}", email, tenant.getSlug(), clientId);
         return user;
