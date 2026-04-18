@@ -3,6 +3,7 @@ import { useApiClient, type UpdateProfileRequest, type ChangePasswordRequest } f
 
 export const profileKeys = {
   me: ['profile', 'me'] as const,
+  tenant: ['profile', 'tenant'] as const,
 }
 
 export function useProfile() {
@@ -23,6 +24,15 @@ export function useUpdateProfile() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: profileKeys.me })
     },
+  })
+}
+
+export function useTenantInfo() {
+  const api = useApiClient()
+
+  return useQuery({
+    queryKey: profileKeys.tenant,
+    queryFn: () => api.getTenantInfo(),
   })
 }
 
