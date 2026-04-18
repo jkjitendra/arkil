@@ -53,16 +53,30 @@ export function ProjectsPage() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {projectList.map((project) => (
           <Link key={project.id} to="/projects/$projectId" params={{ projectId: project.id }}>
-            <Card className="hover:border-primary/50 transition-colors cursor-pointer group h-full">
+              <Card className="hover:border-primary/50 transition-colors cursor-pointer group h-full">
               <CardHeader>
                 <div className="flex items-start justify-between">
-                  <div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-muted/40 overflow-hidden">
+                      {project.iconUrl ? (
+                        <img src={project.iconUrl} alt={`${project.name} icon`} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="text-sm font-semibold">{project.name.charAt(0).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div>
                     <CardTitle className="group-hover:text-primary transition-colors">
                       {project.name}
                     </CardTitle>
                     <CardDescription className="font-mono text-xs mt-1">
                       {project.slug}
                     </CardDescription>
+                      {project.description && (
+                        <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+                          {project.description}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <span
                     className={`px-2 py-1 rounded text-xs font-medium ${project.environment === 'PRODUCTION'
