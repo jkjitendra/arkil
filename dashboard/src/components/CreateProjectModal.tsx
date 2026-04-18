@@ -25,6 +25,7 @@ export function CreateProjectModal({ open, onOpenChange }: CreateProjectModalPro
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
+  const [environment, setEnvironment] = useState<'DEVELOPMENT' | 'PRODUCTION'>('DEVELOPMENT')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // State for API key display modal
@@ -67,13 +68,14 @@ export function CreateProjectModal({ open, onOpenChange }: CreateProjectModalPro
         name: name.trim(),
         slug: slug.trim(),
         description: description.trim() || undefined,
-        environment: 'DEVELOPMENT',
+        environment,
       })
 
       // Reset form and close create modal
       setName('')
       setSlug('')
       setDescription('')
+      setEnvironment('DEVELOPMENT')
       setErrors({})
       onOpenChange(false)
 
@@ -110,6 +112,7 @@ export function CreateProjectModal({ open, onOpenChange }: CreateProjectModalPro
       setName('')
       setSlug('')
       setDescription('')
+      setEnvironment('DEVELOPMENT')
       setErrors({})
     }
     onOpenChange(nextOpen)
@@ -161,6 +164,21 @@ export function CreateProjectModal({ open, onOpenChange }: CreateProjectModalPro
                 placeholder="Brief description of your project"
                 className="mt-1.5"
               />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Environment</label>
+              <select
+                value={environment}
+                onChange={(e) => setEnvironment(e.target.value as 'DEVELOPMENT' | 'PRODUCTION')}
+                className="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="DEVELOPMENT">Development</option>
+                <option value="PRODUCTION">Production</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Production projects require `https://` origins and redirect URIs.
+              </p>
             </div>
 
             {errors.submit && (
