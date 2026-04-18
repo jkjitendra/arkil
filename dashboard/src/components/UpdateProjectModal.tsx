@@ -22,6 +22,8 @@ interface UpdateProjectModalProps {
 export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjectModalProps) {
   const [name, setName] = useState(project.name)
   const [description, setDescription] = useState(project.description || '')
+  const [iconUrl, setIconUrl] = useState(project.iconUrl || '')
+  const [environment, setEnvironment] = useState<'DEVELOPMENT' | 'PRODUCTION'>(project.environment)
   const [allowedOrigins, setAllowedOrigins] = useState<string[]>(project.allowedOrigins || [])
   const [redirectUris, setRedirectUris] = useState<string[]>(project.redirectUris || [])
   const [newOrigin, setNewOrigin] = useState('')
@@ -34,6 +36,8 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
   useEffect(() => {
     setName(project.name)
     setDescription(project.description || '')
+    setIconUrl(project.iconUrl || '')
+    setEnvironment(project.environment)
     setAllowedOrigins(project.allowedOrigins || [])
     setRedirectUris(project.redirectUris || [])
   }, [project])
@@ -147,6 +151,8 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
       await updateMutation.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
+        iconUrl: iconUrl.trim() || undefined,
+        environment,
         allowedOrigins,
         redirectUris,
       })
@@ -196,6 +202,35 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
               placeholder="Brief description"
               className="mt-1.5"
             />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="text-sm font-medium">Icon URL</label>
+              <Input
+                value={iconUrl}
+                onChange={(e) => setIconUrl(e.target.value)}
+                placeholder="https://cdn.example.com/icon.png"
+                className="mt-1.5"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Displayed in the dashboard and hosted project metadata.
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Environment</label>
+              <select
+                value={environment}
+                onChange={(e) => setEnvironment(e.target.value as 'DEVELOPMENT' | 'PRODUCTION')}
+                className="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="DEVELOPMENT">Development</option>
+                <option value="PRODUCTION">Production</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Production mode enforces stricter origin and redirect validation.
+              </p>
+            </div>
           </div>
 
           {/* Allowed Origins */}
