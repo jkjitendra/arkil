@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Key,
   Settings,
+  Users,
   LogOut,
   ChevronRight,
   Menu,
@@ -13,12 +14,6 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from './ui/button'
-
-const navigation = [
-  { name: 'Projects', href: '/', icon: LayoutDashboard },
-  { name: 'API Keys', href: '/keys', icon: Key },
-  { name: 'Settings', href: '/settings', icon: Settings },
-]
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
@@ -31,6 +26,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const userName = profile?.displayName || user?.profile?.name || user?.profile?.preferred_username || userEmail
   const userInitial = userName.charAt(0).toUpperCase()
   const tenantName = profile?.tenant.name
+  const canManageUsers = !!profile?.roles.some((role) => role === 'TENANT_ADMIN' || role === 'SUPER_ADMIN' || role === 'PLATFORM_ADMIN')
+  const navigation = [
+    { name: 'Projects', href: '/', icon: LayoutDashboard, active: location.pathname === '/' || location.pathname.startsWith('/projects/') },
+    { name: 'API Keys', href: '/keys', icon: Key, active: location.pathname === '/keys' },
+    ...(canManageUsers ? [{ name: 'Users', href: '/users', icon: Users, active: location.pathname === '/users' }] : []),
+    { name: 'Settings', href: '/settings', icon: Settings, active: location.pathname === '/settings' },
+  ]
 
   const handleLogout = async () => {
     try {
@@ -74,21 +76,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 px-4 py-4 space-y-1">
           {navigation.map((item) => {
-            const isActive = location.pathname === item.href
             return (
               <Link
                 key={item.name}
                 to={item.href}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                  isActive
+                  item.active
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                 )}
               >
                 <item.icon className="h-5 w-5" />
                 {item.name}
-                {isActive && <ChevronRight className="h-4 w-4 ml-auto" />}
+                {item.active && <ChevronRight className="h-4 w-4 ml-auto" />}
               </Link>
             )
           })}
