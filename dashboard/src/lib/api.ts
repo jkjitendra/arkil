@@ -222,6 +222,11 @@ export interface TenantInfo {
   slug: string
 }
 
+export interface TenantDetails extends TenantInfo {
+  enabled: boolean
+  createdAt?: string
+}
+
 export interface UserProfile {
   id: string
   username: string
@@ -235,6 +240,37 @@ export interface UserProfile {
   roles: string[]
   createdAt?: string
   lastLoginAt?: string
+}
+
+export interface AdminUser {
+  id: string
+  username: string
+  email: string
+  displayName?: string
+  enabled: boolean
+  emailVerified: boolean
+  tenantId: string
+  tenantName: string
+  tenantSlug: string
+  roles: string[]
+  createdAt?: string
+  updatedAt?: string
+  lastLoginAt?: string
+}
+
+export interface PaginatedResponse<T> {
+  content: T[]
+  number: number
+  size: number
+  totalElements: number
+  totalPages: number
+  first: boolean
+  last: boolean
+}
+
+export interface UpdateAdminUserRequest {
+  enabled?: boolean
+  emailVerified?: boolean
 }
 
 export interface UpdateProfileRequest {
@@ -474,6 +510,56 @@ export function createApiClient(getToken: () => Promise<string | null>) {
 
     async listWebhookEvents(projectId: string): Promise<string[]> {
       const res = await fetcher(`/projects/${projectId}/webhooks/events`)
+      return res.json()
+    },
+
+    // Tenant & Admin
+    async getTenantInfo(): Promise<TenantDetails> {
+      const res = await fetcher('/tenant/me')
+      return res.json()
+    },
+
+    async listAdminUsers(params: { page?: number; size?: number } = {}): Promise<PaginatedResponse<AdminUser>> {
+      const search = new URLSearchParams()
+      if (typeof params.page === 'number') search.set('page', String(params.page))
+      if (typeof params.size === 'number') search.set('size', String(params.size))
+      const suffix = search.size ? `?${search.toString()}` : ''
+      const res = await fetcher(`/admin/users${suffix}`)
+      return res.json()
+    },
+
+    async getAdminUser(userId: string): Promise<AdminUser> {
+      const res = await fetcher(`/admin/users/${encodeURIComponent(userId)}`)
+      return res.json()
+    },
+
+    async updateAdminUser(userId: string, data: UpdateAdminUserRequest): Promise<AdminUser> {
+      const res = await fetcher(`/admin/users/${encodeURIComponent(userId)}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+
+    async blockAdminUser(userId: string, reason?: string): Promise<{ message: string }> {
+      const res = await fetcher(`/admin/users/${encodeURIComponent(userId)}/block`, {
+        method: 'POST',
+        body: JSON.stringify(reason ? { reason } : {}),
+      })
+      return res.json()
+    },
+
+    async unblockAdminUser(userId: string): Promise<{ message: string }> {
+      const res = await fetcher(`/admin/users/${encodeURIComponent(userId)}/unblock`, {
+        method: 'POST',
+      })
+      return res.json()
+    },
+
+    async deleteAdminUser(userId: string): Promise<{ message: string }> {
+      const res = await fetcher(`/admin/users/${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      })
       return res.json()
     },
 

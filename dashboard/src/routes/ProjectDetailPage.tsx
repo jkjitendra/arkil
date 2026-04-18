@@ -37,6 +37,10 @@ export function ProjectDetailPage() {
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [pendingKeyId, setPendingKeyId] = useState<string | null>(null) // Per-row loading state
+  const [createKeyDialogOpen, setCreateKeyDialogOpen] = useState(false)
+  const [newKeyName, setNewKeyName] = useState('')
+  const [newKeyType, setNewKeyType] = useState<'TEST' | 'LIVE'>('TEST')
+  const [keyActionError, setKeyActionError] = useState('')
 
   // State for API key display modal
   const [keyModalOpen, setKeyModalOpen] = useState(false)
@@ -91,16 +95,23 @@ export function ProjectDetailPage() {
 
   const handleCreateKey = async () => {
     try {
-      const result = await createMutation.mutateAsync({ name: 'New Key', keyType: 'TEST' })
+      const result = await createMutation.mutateAsync({
+        name: newKeyName.trim() || `${project?.name || 'Project'} ${newKeyType === 'LIVE' ? 'Live' : 'Test'} Key`,
+        keyType: newKeyType,
+      })
       // Show the new secret in modal
       setNewKeyData({
         name: result.keyPair.apiKey.name,
         secretKey: result.keyPair.secretKey,
         publishableKey: result.keyPair.apiKey.publishableKey,
       })
+      setCreateKeyDialogOpen(false)
+      setNewKeyName('')
+      setNewKeyType('TEST')
+      setKeyActionError('')
       setKeyModalOpen(true)
     } catch (error) {
-      console.error('Create failed:', error)
+      setKeyActionError(error instanceof Error ? error.message : 'Create failed')
     }
   }
 
@@ -135,6 +146,13 @@ export function ProjectDetailPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-muted/40">
+          {project.iconUrl ? (
+            <img src={project.iconUrl} alt={`${project.name} icon`} className="h-full w-full object-cover" />
+          ) : (
+            <span className="text-lg font-semibold">{project.name.charAt(0).toUpperCase()}</span>
+          )}
+        </div>
         <div className="flex-1">
           <h1 className="text-3xl font-bold tracking-tight">{project.name}</h1>
           <p className="text-muted-foreground font-mono text-sm mt-1">
@@ -214,6 +232,22 @@ export function ProjectDetailPage() {
               <Input value={project.slug} className="mt-1.5 font-mono" readOnly />
             </div>
           </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="text-sm font-medium">Environment</label>
+              <Input value={project.environment} className="mt-1.5" readOnly />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Icon URL</label>
+              <Input value={project.iconUrl || ''} className="mt-1.5" readOnly placeholder="Not configured" />
+            </div>
+          </div>
+          {project.description && (
+            <div>
+              <label className="text-sm font-medium">Description</label>
+              <Input value={project.description} className="mt-1.5" readOnly />
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium">Allowed Origins</label>
             <div className="mt-1.5 flex flex-wrap gap-2">
@@ -269,12 +303,13 @@ export function ProjectDetailPage() {
               Manage authentication keys for this project
             </p>
           </div>
-          <Button onClick={handleCreateKey} disabled={createMutation.isPending}>
-            {createMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
+          <Button
+            onClick={() => {
+              setKeyActionError('')
+              setCreateKeyDialogOpen(true)
+            }}
+          >
+            <Plus className="h-4 w-4" />
             New Key
           </Button>
         </div>
@@ -315,6 +350,9 @@ export function ProjectDetailPage() {
                       <div className="flex items-center gap-2">
                         <Key className="h-4 w-4 text-muted-foreground" />
                         <span className="font-medium">{key.name}</span>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${key.keyType === 'LIVE' ? 'bg-info/20 text-info' : 'bg-muted text-muted-foreground'}`}>
+                          {key.keyType}
+                        </span>
                         {key.status === 'ROTATING' ? (
                           <span className="px-2 py-0.5 rounded text-xs font-medium bg-warning/20 text-warning">
                             EXPIRING
@@ -453,6 +491,66 @@ export function ProjectDetailPage() {
         open={providerSetupOpen}
         onOpenChange={setProviderSetupOpen}
       />
+
+      <Dialog
+        open={createKeyDialogOpen}
+        onOpenChange={(open) => {
+          setCreateKeyDialogOpen(open)
+          if (!open) {
+            setNewKeyName('')
+            setNewKeyType('TEST')
+            setKeyActionError('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create API Key</DialogTitle>
+            <DialogDescription>
+              Create a new test or live key pair for this project.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Key Name</label>
+              <Input
+                value={newKeyName}
+                onChange={(event) => setNewKeyName(event.target.value)}
+                className="mt-1.5"
+                placeholder={`${project.name} ${newKeyType === 'LIVE' ? 'Live' : 'Test'} Key`}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Key Type</label>
+              <select
+                value={newKeyType}
+                onChange={(event) => setNewKeyType(event.target.value as 'TEST' | 'LIVE')}
+                className="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <option value="TEST">Test</option>
+                <option value="LIVE">Live</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Live keys are intended for production traffic and should be stored securely.
+              </p>
+            </div>
+            {keyActionError && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {keyActionError}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateKeyDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateKey} disabled={createMutation.isPending}>
+              {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Create Key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
