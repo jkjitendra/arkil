@@ -56,6 +56,7 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
   const [newSecretModal, setNewSecretModal] = useState(false)
   const [newSecret, setNewSecret] = useState<string | null>(null)
   const [copiedSecret, setCopiedSecret] = useState(false)
+  const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string; timestamp: string }>>({})
 
   // Form state
   const [formUrl, setFormUrl] = useState('')
@@ -100,6 +101,16 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
 
   const testMutation = useMutation({
     mutationFn: (webhookId: string) => api.testWebhook(projectId, webhookId),
+    onSuccess: (result, webhookId) => {
+      setTestResults((current) => ({
+        ...current,
+        [webhookId]: {
+          success: result.success,
+          message: result.message,
+          timestamp: new Date().toISOString(),
+        },
+      }))
+    },
   })
 
   // ─── Helpers ────────────────────────────────────────────────
@@ -187,6 +198,7 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
             <div className="space-y-4">
               {webhooks.map((webhook) => {
                 const events = formatEventList(webhook.events)
+                const lastTest = testResults[webhook.id]
                 return (
                   <div
                     key={webhook.id}
@@ -207,6 +219,14 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
                         {webhook.description && (
                           <p className="text-sm text-muted-foreground mt-1">{webhook.description}</p>
                         )}
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                          <span>Updated {new Date(webhook.updatedAt || webhook.createdAt).toLocaleString()}</span>
+                          {lastTest && (
+                            <span className={lastTest.success ? 'text-success' : 'text-destructive'}>
+                              Last test {lastTest.success ? 'passed' : 'failed'} at {new Date(lastTest.timestamp).toLocaleTimeString()}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           {events.map(event => (
                             <span
@@ -263,15 +283,15 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
                     </div>
 
                     {/* Test result feedback */}
-                    {testMutation.isSuccess && testMutation.variables === webhook.id && (
-                      <div className={`mt-3 text-sm flex items-center gap-2 ${testMutation.data?.success ? 'text-success' : 'text-destructive'
+                    {lastTest && (
+                      <div className={`mt-3 text-sm flex items-center gap-2 ${lastTest.success ? 'text-success' : 'text-destructive'
                         }`}>
-                        {testMutation.data?.success ? (
+                        {lastTest.success ? (
                           <Check className="h-4 w-4" />
                         ) : (
                           <AlertCircle className="h-4 w-4" />
                         )}
-                        {testMutation.data?.message}
+                        {lastTest.message}
                       </div>
                     )}
                   </div>
