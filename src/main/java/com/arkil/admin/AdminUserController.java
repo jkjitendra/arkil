@@ -17,6 +17,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -243,9 +244,16 @@ public class AdminUserController {
                 user.getId(),
                 user.getUsername(),
                 user.getEmail(),
+                user.getDisplayName(),
                 Boolean.TRUE.equals(user.getEnabled()),
                 Boolean.TRUE.equals(user.getEmailVerified()),
-                user.getCreatedAt() != null ? user.getCreatedAt().toString() : null
+                user.getTenant().getId(),
+                user.getTenant().getName(),
+                user.getTenant().getSlug(),
+                user.getRoles().stream().map(role -> role.getName()).sorted().toList(),
+                user.getCreatedAt() != null ? user.getCreatedAt().toString() : null,
+                user.getUpdatedAt() != null ? user.getUpdatedAt().toString() : null,
+                user.getLastLoginAt() != null ? user.getLastLoginAt().toString() : null
         );
     }
 
@@ -253,9 +261,16 @@ public class AdminUserController {
             UUID id,
             String username,
             String email,
+            String displayName,
             boolean enabled,
             boolean emailVerified,
-            String createdAt
+            UUID tenantId,
+            String tenantName,
+            String tenantSlug,
+            List<String> roles,
+            String createdAt,
+            String updatedAt,
+            String lastLoginAt
     ) {}
 
     public record UpdateUserRequest(
