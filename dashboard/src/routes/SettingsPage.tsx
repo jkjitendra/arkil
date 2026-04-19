@@ -2,14 +2,15 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Save, User, Shield, Key, Loader2, Check, AlertTriangle, Smartphone } from 'lucide-react'
-import { useProfile, useUpdateProfile, useChangePassword, useDeleteAccount } from '@/hooks/useProfile'
+import { Save, User, Shield, Key, Loader2, Check, AlertTriangle, Smartphone, Building2 } from 'lucide-react'
+import { useProfile, useTenantInfo, useUpdateProfile, useChangePassword, useDeleteAccount } from '@/hooks/useProfile'
 import { useCreatePasskey, useEnrollTotp, usePasskeys, useRemovePasskey, useRemoveTotp, useRenamePasskey, useTotpStatus, useVerifyTotp } from '@/hooks/useFactors'
 import { useAuth } from '@/lib/auth'
 import { useApiClient } from '@/lib/api'
 
 export function SettingsPage() {
   const { data: profile, isLoading } = useProfile()
+  const { data: tenant } = useTenantInfo()
   const updateProfile = useUpdateProfile()
   const changePassword = useChangePassword()
   const deleteAccount = useDeleteAccount()
@@ -397,13 +398,37 @@ export function SettingsPage() {
           <div className="pt-4 border-t">
             <div className="grid gap-2 text-sm text-muted-foreground">
               <div className="flex justify-between">
+                <span>Account ID</span>
+                <span className="font-mono text-foreground">{profile?.id}</span>
+              </div>
+              <div className="flex justify-between">
                 <span>Organization</span>
                 <span className="font-medium text-foreground">{profile?.tenant.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tenant slug</span>
+                <span className="font-medium text-foreground">{profile?.tenant.slug}</span>
               </div>
               <div className="flex justify-between">
                 <span>Roles</span>
                 <span className="font-medium text-foreground">{profile?.roles.join(', ')}</span>
               </div>
+              <div className="flex justify-between">
+                <span>Email status</span>
+                <span className="font-medium text-foreground">{profile?.emailVerified ? 'Verified' : 'Unverified'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Account status</span>
+                <span className="font-medium text-foreground">{profile?.enabled ? 'Active' : 'Disabled'}</span>
+              </div>
+              {profile?.lastLoginAt && (
+                <div className="flex justify-between">
+                  <span>Last login</span>
+                  <span className="font-medium text-foreground">
+                    {new Date(profile.lastLoginAt).toLocaleString()}
+                  </span>
+                </div>
+              )}
               {profile?.createdAt && (
                 <div className="flex justify-between">
                   <span>Member since</span>
@@ -414,6 +439,44 @@ export function SettingsPage() {
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle>Tenant</CardTitle>
+              <CardDescription>Workspace and organization identifiers</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-2">
+          <div className="flex justify-between gap-4">
+            <span>Name</span>
+            <span className="font-medium text-foreground">{tenant?.name || profile?.tenant.name}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Slug</span>
+            <span className="font-medium text-foreground">{tenant?.slug || profile?.tenant.slug}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Tenant ID</span>
+            <span className="font-mono text-foreground">{tenant?.id || profile?.tenant.id}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Status</span>
+            <span className="font-medium text-foreground">{tenant?.enabled === false ? 'Disabled' : 'Active'}</span>
+          </div>
+          {tenant?.createdAt && (
+            <div className="flex justify-between gap-4">
+              <span>Created</span>
+              <span className="font-medium text-foreground">{new Date(tenant.createdAt).toLocaleDateString()}</span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
