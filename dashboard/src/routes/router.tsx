@@ -3,6 +3,7 @@ import { Layout } from '@/components/Layout'
 import { ProjectsPage } from './ProjectsPage'
 import { ProjectDetailPage } from './ProjectDetailPage'
 import { SettingsPage } from './SettingsPage'
+import { UsersPage } from './UsersPage'
 import { CallbackPage } from './CallbackPage'
 import { SilentRefreshPage } from './SilentRefreshPage'
 import { LoginPage } from './LoginPage'
@@ -124,6 +125,18 @@ const settingsRoute = createRoute({
   ),
 })
 
+const usersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/users',
+  component: () => (
+    <AuthGuard>
+      <Layout>
+        <UsersPage />
+      </Layout>
+    </AuthGuard>
+  ),
+})
+
 const notFoundRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '*',
@@ -156,6 +169,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   projectDetailRoute,
   keysRoute,
+  usersRoute,
   settingsRoute,
   notFoundRoute,
 ])
