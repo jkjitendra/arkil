@@ -12,6 +12,7 @@ const PROVIDER_META: Record<string, {
   defaultScopes: string
   clientIdLabel: string
   clientSecretLabel: string
+  custom?: boolean
 }> = {
   google: {
     displayName: 'Google',
@@ -45,6 +46,15 @@ const PROVIDER_META: Record<string, {
     clientIdLabel: 'Client ID',
     clientSecretLabel: 'Client Secret',
   },
+  'custom-oidc': {
+    displayName: 'Custom OIDC',
+    docsUrl: 'https://openid.net/specs/openid-connect-core-1_0.html',
+    docsLabel: 'OpenID Connect specification',
+    defaultScopes: 'openid,profile,email',
+    clientIdLabel: 'Client ID',
+    clientSecretLabel: 'Client Secret',
+    custom: true,
+  },
 }
 
 interface OAuthProviderSetupProps {
@@ -62,6 +72,13 @@ export function OAuthProviderSetup({ projectId, provider, open, onOpenChange }: 
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [scopes, setScopes] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [issuerUri, setIssuerUri] = useState('')
+  const [authorizationUri, setAuthorizationUri] = useState('')
+  const [tokenUri, setTokenUri] = useState('')
+  const [userInfoUri, setUserInfoUri] = useState('')
+  const [jwkSetUri, setJwkSetUri] = useState('')
+  const [userNameAttribute, setUserNameAttribute] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const meta = provider ? PROVIDER_META[provider] : null
@@ -74,10 +91,24 @@ export function OAuthProviderSetup({ projectId, provider, open, onOpenChange }: 
         setClientId(existing.clientId)
         setClientSecret('') // Don't pre-fill secret (it's masked)
         setScopes(existing.scopes)
+        setDisplayName(existing.displayName ?? '')
+        setIssuerUri(existing.issuerUri ?? '')
+        setAuthorizationUri(existing.authorizationUri ?? '')
+        setTokenUri(existing.tokenUri ?? '')
+        setUserInfoUri(existing.userInfoUri ?? '')
+        setJwkSetUri(existing.jwkSetUri ?? '')
+        setUserNameAttribute(existing.userNameAttribute ?? '')
       } else {
         setClientId('')
         setClientSecret('')
         setScopes(meta?.defaultScopes ?? '')
+        setDisplayName('')
+        setIssuerUri('')
+        setAuthorizationUri('')
+        setTokenUri('')
+        setUserInfoUri('')
+        setJwkSetUri('')
+        setUserNameAttribute(provider === 'custom-oidc' ? 'sub' : '')
       }
       setError(null)
     }
@@ -99,13 +130,36 @@ export function OAuthProviderSetup({ projectId, provider, open, onOpenChange }: 
       setError(`${meta.clientSecretLabel} is required`)
       return
     }
+    if (meta.custom) {
+      const requiredFields = [
+        ['Issuer URL', issuerUri],
+        ['Authorization URL', authorizationUri],
+        ['Token URL', tokenUri],
+        ['User Info URL', userInfoUri],
+        ['JWK Set URL', jwkSetUri],
+        ['User Name Attribute', userNameAttribute],
+      ] as const
+
+      const missing = requiredFields.filter(([, value]) => !value.trim())
+      if (missing.length > 0) {
+        setError(`${missing[0][0]} is required`)
+        return
+      }
+    }
 
     try {
       await upsertMutation.mutateAsync({
         provider,
+        displayName: displayName.trim() || undefined,
         clientId: clientId.trim(),
         clientSecret: clientSecret.trim() || undefined,
         scopes: scopes.trim() || undefined,
+        issuerUri: issuerUri.trim() || undefined,
+        authorizationUri: authorizationUri.trim() || undefined,
+        tokenUri: tokenUri.trim() || undefined,
+        userInfoUri: userInfoUri.trim() || undefined,
+        jwkSetUri: jwkSetUri.trim() || undefined,
+        userNameAttribute: userNameAttribute.trim() || undefined,
       })
       onOpenChange(false)
     } catch (err: any) {
@@ -163,6 +217,21 @@ export function OAuthProviderSetup({ projectId, provider, open, onOpenChange }: 
             />
           </div>
 
+          {meta.custom && (
+            <div>
+              <label className="text-sm font-medium">Button Label</label>
+              <Input
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Sign in with Acme SSO"
+                className="mt-1.5"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Optional label shown on the hosted login page.
+              </p>
+            </div>
+          )}
+
           {/* Client Secret */}
           <div>
             <label className="text-sm font-medium">{meta.clientSecretLabel}</label>
@@ -193,6 +262,65 @@ export function OAuthProviderSetup({ projectId, provider, open, onOpenChange }: 
               Comma-separated. Defaults: {meta.defaultScopes}
             </p>
           </div>
+
+          {meta.custom && (
+            <>
+              <div>
+                <label className="text-sm font-medium">Issuer URL</label>
+                <Input
+                  value={issuerUri}
+                  onChange={(e) => setIssuerUri(e.target.value)}
+                  placeholder="https://id.example.com"
+                  className="mt-1.5 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Authorization URL</label>
+                <Input
+                  value={authorizationUri}
+                  onChange={(e) => setAuthorizationUri(e.target.value)}
+                  placeholder="https://id.example.com/oauth2/authorize"
+                  className="mt-1.5 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Token URL</label>
+                <Input
+                  value={tokenUri}
+                  onChange={(e) => setTokenUri(e.target.value)}
+                  placeholder="https://id.example.com/oauth2/token"
+                  className="mt-1.5 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">User Info URL</label>
+                <Input
+                  value={userInfoUri}
+                  onChange={(e) => setUserInfoUri(e.target.value)}
+                  placeholder="https://id.example.com/userinfo"
+                  className="mt-1.5 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">JWK Set URL</label>
+                <Input
+                  value={jwkSetUri}
+                  onChange={(e) => setJwkSetUri(e.target.value)}
+                  placeholder="https://id.example.com/oauth2/jwks"
+                  className="mt-1.5 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">User Name Attribute</label>
+                <Input
+                  value={userNameAttribute}
+                  onChange={(e) => setUserNameAttribute(e.target.value)}
+                  placeholder="sub"
+                  className="mt-1.5 font-mono text-sm"
+                />
+              </div>
+            </>
+          )}
 
           {/* Error */}
           {error && (
