@@ -155,9 +155,16 @@ export interface AuthMethodsResponse {
 export interface OAuthProviderDto {
   id: string
   provider: string
+  displayName?: string
   clientId: string
   clientSecretMasked: string
   scopes: string
+  issuerUri?: string
+  authorizationUri?: string
+  tokenUri?: string
+  userInfoUri?: string
+  jwkSetUri?: string
+  userNameAttribute?: string
   environment: string
   enabled: boolean
   createdAt: string
@@ -166,9 +173,16 @@ export interface OAuthProviderDto {
 
 export interface UpsertOAuthProviderRequest {
   provider: string
+  displayName?: string
   clientId: string
   clientSecret?: string
   scopes?: string
+  issuerUri?: string
+  authorizationUri?: string
+  tokenUri?: string
+  userInfoUri?: string
+  jwkSetUri?: string
+  userNameAttribute?: string
   environment?: string
   enabled?: boolean
 }
