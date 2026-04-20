@@ -90,7 +90,8 @@ public class PublicConfigController {
 
     private boolean isSocialModule(AuthModule module) {
         return module == AuthModule.OAUTH2_GOOGLE || module == AuthModule.OAUTH2_GITHUB ||
-               module == AuthModule.OAUTH2_APPLE || module == AuthModule.OAUTH2_LINKEDIN;
+               module == AuthModule.OAUTH2_APPLE || module == AuthModule.OAUTH2_LINKEDIN ||
+               module == AuthModule.OAUTH2_CUSTOM_OIDC;
     }
 
     private String getProviderForModule(AuthModule module) {
@@ -99,6 +100,7 @@ public class PublicConfigController {
             case OAUTH2_GITHUB -> "github";
             case OAUTH2_APPLE -> "apple";
             case OAUTH2_LINKEDIN -> "linkedin";
+            case OAUTH2_CUSTOM_OIDC -> "custom-oidc";
             default -> null;
         };
     }

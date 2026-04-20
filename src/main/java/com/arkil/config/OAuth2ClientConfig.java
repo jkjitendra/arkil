@@ -267,6 +267,7 @@ public class OAuth2ClientConfig {
             case "github" -> AuthModule.OAUTH2_GITHUB;
             case "apple" -> AuthModule.OAUTH2_APPLE;
             case "linkedin" -> AuthModule.OAUTH2_LINKEDIN;
+            case "custom-oidc" -> AuthModule.OAUTH2_CUSTOM_OIDC;
             default -> null;
         };
     }

@@ -373,7 +373,7 @@
         <!-- Social login section -->
         <div th:if="${clientContext != null and clientContext.resolved}">
             <!-- Only show divider if both password and social are enabled -->
-            <div th:if="${clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).EMAIL_PASSWORD) and (clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).OAUTH2_GOOGLE) or clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).OAUTH2_GITHUB))}" class="divider">
+            <div th:if="${clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).EMAIL_PASSWORD) and (clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).OAUTH2_GOOGLE) or clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).OAUTH2_GITHUB) or clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).OAUTH2_APPLE) or clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).OAUTH2_LINKEDIN) or clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).OAUTH2_CUSTOM_OIDC))}" class="divider">
                 <span>or continue with</span>
             </div>
 
@@ -404,6 +404,12 @@
                    th:href="@{/oauth2/authorization/linkedin(client_id=${clientContext.clientId})}"
                    class="social-btn linkedin">
                     🔗 Sign in with LinkedIn
+                </a>
+
+                <a th:if="${clientContext.isModuleEnabled(T(com.arkil.client.AuthModule).OAUTH2_CUSTOM_OIDC)}"
+                   th:href="@{/oauth2/authorization/custom-oidc(client_id=${clientContext.clientId})}"
+                   class="social-btn">
+                    🏢 <span th:text="${customOidcDisplayName != null ? customOidcDisplayName : 'Sign in with Enterprise SSO'}">Sign in with Enterprise SSO</span>
                 </a>
             </div>
 

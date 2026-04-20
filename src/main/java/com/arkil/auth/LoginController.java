@@ -10,6 +10,10 @@ import com.arkil.email.EmailTokenService;
 import com.arkil.policy.ClientContext;
 import com.arkil.policy.ClientContextHolder;
 import com.arkil.policy.ClientContextResolver;
+import com.arkil.project.Project;
+import com.arkil.project.ProjectOAuthProvider;
+import com.arkil.project.ProjectOAuthProviderRepository;
+import com.arkil.project.ProjectRepository;
 import com.arkil.tenant.TenantContext;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
@@ -56,6 +60,8 @@ public class LoginController {
     private final PasswordCredentialRepository passwordCredentialRepository;
     private final PasswordEncoder passwordEncoder;
     private final ProjectWebhookEventService projectWebhookEventService;
+    private final ProjectRepository projectRepository;
+    private final ProjectOAuthProviderRepository providerRepository;
 
     // ─────────────────────────────────────────────────────────────────
     // Login
@@ -315,7 +321,7 @@ public class LoginController {
             @RequestParam("return_to") String returnTo,
             HttpServletRequest request) {
 
-        if (!Set.of("google", "github", "apple", "linkedin").contains(provider.toLowerCase())) {
+        if (!Set.of("google", "github", "apple", "linkedin", "custom-oidc").contains(provider.toLowerCase())) {
             return "redirect:/login?error=oauth2";
         }
 
@@ -387,7 +393,21 @@ public class LoginController {
             clientContextHolder.setContext(context);
             request.setAttribute("clientContext", context);
             model.addAttribute("clientContext", context);
+            resolveProject(context.getClientId()).ifPresent(project -> providerRepository
+                    .findByProjectIdAndProviderAndEnvironment(project.getId(), "custom-oidc", project.getEnvironment())
+                    .filter(ProjectOAuthProvider::isEnabled)
+                    .ifPresent(provider -> model.addAttribute(
+                            "customOidcDisplayName",
+                            StringUtils.hasText(provider.getDisplayName()) ? provider.getDisplayName() : "Enterprise SSO")));
         }
+    }
+
+    private Optional<Project> resolveProject(String clientId) {
+        if (!StringUtils.hasText(clientId)) {
+            return Optional.empty();
+        }
+        String slug = clientId.startsWith("proj_") ? clientId.substring(5) : clientId;
+        return projectRepository.findBySlug(slug);
     }
 
     private Optional<ArkilUser> resolveUserByEmail(String email) {

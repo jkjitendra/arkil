@@ -237,6 +237,53 @@ class ProjectApiIntegrationTests {
         Assertions.assertEquals("super-secret-value", encryptionService.decrypt(updated.getClientSecretEncrypted()));
     }
 
+    @Test
+    @Order(13)
+    @DisplayName("POST /api/v1/projects/{id}/oauth-providers — custom OIDC provider stores runtime metadata")
+    void createCustomOidcProvider() throws Exception {
+        Assumptions.assumeTrue(createdProjectId != null);
+
+        mockMvc.perform(post("/api/v1/projects/{id}/oauth-providers", createdProjectId)
+                        .with(jwt().jwt(jwt -> jwt
+                                .subject("00000000-0000-0000-0000-000000000001")
+                                .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
+                                .claim("scope", "arkil:admin")
+                        ))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.ofEntries(
+                                Map.entry("provider", "custom-oidc"),
+                                Map.entry("displayName", "Acme Workforce SSO"),
+                                Map.entry("clientId", "acme-client-id"),
+                                Map.entry("clientSecret", "acme-secret"),
+                                Map.entry("scopes", "openid,profile,email,groups"),
+                                Map.entry("issuerUri", "https://id.acme.test"),
+                                Map.entry("authorizationUri", "https://id.acme.test/oauth2/authorize"),
+                                Map.entry("tokenUri", "https://id.acme.test/oauth2/token"),
+                                Map.entry("userInfoUri", "https://id.acme.test/oauth2/userinfo"),
+                                Map.entry("jwkSetUri", "https://id.acme.test/oauth2/jwks"),
+                                Map.entry("userNameAttribute", "sub")
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.provider").value("custom-oidc"))
+                .andExpect(jsonPath("$.displayName").value("Acme Workforce SSO"))
+                .andExpect(jsonPath("$.issuerUri").value("https://id.acme.test"))
+                .andExpect(jsonPath("$.authorizationUri").value("https://id.acme.test/oauth2/authorize"))
+                .andExpect(jsonPath("$.userNameAttribute").value("sub"));
+
+        mockMvc.perform(put("/api/v1/projects/{id}/auth-methods", createdProjectId)
+                        .with(jwt().jwt(jwt -> jwt
+                                .subject("00000000-0000-0000-0000-000000000001")
+                                .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
+                                .claim("scope", "arkil:admin")
+                        ))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "enabledModules", List.of("EMAIL_PASSWORD", "OAUTH2_CUSTOM_OIDC")
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabledModules", hasItem("OAUTH2_CUSTOM_OIDC")));
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Soft Delete & Restore
     // ─────────────────────────────────────────────────────────────────
