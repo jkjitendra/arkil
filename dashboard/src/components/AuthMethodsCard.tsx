@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
+  Building2,
   Mail,
   Key,
   Smartphone,
@@ -87,6 +88,14 @@ const AUTH_MODULES = [
     icon: () => <LinkedInIcon />,
     category: 'social' as const,
     provider: 'linkedin',
+  },
+  {
+    id: 'OAUTH2_CUSTOM_OIDC',
+    label: 'Enterprise SSO',
+    description: 'Connect any OpenID Connect identity provider',
+    icon: Building2,
+    category: 'social' as const,
+    provider: 'custom-oidc',
   },
   {
     id: 'PASSKEY',
