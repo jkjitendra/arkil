@@ -156,9 +156,16 @@ public class ProjectPolicyController {
                 .map(p -> new OAuthProviderDto(
                         p.getId(),
                         p.getProvider(),
+                        p.getDisplayName(),
                         p.getClientId(),
                         maskSecret(p.getClientSecretEncrypted()),
                         p.getScopes(),
+                        p.getIssuerUri(),
+                        p.getAuthorizationUri(),
+                        p.getTokenUri(),
+                        p.getUserInfoUri(),
+                        p.getJwkSetUri(),
+                        p.getUserNameAttribute(),
                         p.getEnvironment().name(),
                         p.isEnabled(),
                         p.getCreatedAt().toString(),
@@ -183,7 +190,7 @@ public class ProjectPolicyController {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "invalid_provider",
                     "message", "Unsupported provider: " + request.getProvider() +
-                            ". Supported: google, github, apple, linkedin"
+                            ". Supported: google, github, apple, linkedin, custom-oidc"
             ));
         }
 
@@ -214,8 +221,31 @@ public class ProjectPolicyController {
         if (StringUtils.hasText(request.getClientSecret())) {
             provider.setClientSecretEncrypted(encryptionService.encrypt(request.getClientSecret().trim()));
         }
+        provider.setDisplayName(normalizeNullable(request.getDisplayName()));
         provider.setScopes(request.getScopes() != null ? request.getScopes() : getDefaultScopes(request.getProvider()));
+        provider.setIssuerUri(normalizeNullable(request.getIssuerUri()));
+        provider.setAuthorizationUri(normalizeNullable(request.getAuthorizationUri()));
+        provider.setTokenUri(normalizeNullable(request.getTokenUri()));
+        provider.setUserInfoUri(normalizeNullable(request.getUserInfoUri()));
+        provider.setJwkSetUri(normalizeNullable(request.getJwkSetUri()));
+        provider.setUserNameAttribute(normalizeNullable(request.getUserNameAttribute()));
         provider.setEnabled(request.getEnabled() != null ? request.getEnabled() : true);
+
+        if ("custom-oidc".equalsIgnoreCase(request.getProvider())) {
+            List<String> missingFields = new ArrayList<>();
+            if (!StringUtils.hasText(provider.getIssuerUri())) missingFields.add("issuerUri");
+            if (!StringUtils.hasText(provider.getAuthorizationUri())) missingFields.add("authorizationUri");
+            if (!StringUtils.hasText(provider.getTokenUri())) missingFields.add("tokenUri");
+            if (!StringUtils.hasText(provider.getUserInfoUri())) missingFields.add("userInfoUri");
+            if (!StringUtils.hasText(provider.getJwkSetUri())) missingFields.add("jwkSetUri");
+            if (!StringUtils.hasText(provider.getUserNameAttribute())) missingFields.add("userNameAttribute");
+            if (!missingFields.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "invalid_custom_oidc_configuration",
+                        "message", "Custom OIDC providers require: " + String.join(", ", missingFields)
+                ));
+            }
+        }
 
         providerRepository.save(provider);
 
@@ -224,9 +254,16 @@ public class ProjectPolicyController {
         return ResponseEntity.status(HttpStatus.OK).body(new OAuthProviderDto(
                 provider.getId(),
                 provider.getProvider(),
+                provider.getDisplayName(),
                 provider.getClientId(),
                 maskSecret(provider.getClientSecretEncrypted()),
                 provider.getScopes(),
+                provider.getIssuerUri(),
+                provider.getAuthorizationUri(),
+                provider.getTokenUri(),
+                provider.getUserInfoUri(),
+                provider.getJwkSetUri(),
+                provider.getUserNameAttribute(),
                 provider.getEnvironment().name(),
                 provider.isEnabled(),
                 provider.getCreatedAt().toString(),
@@ -320,7 +357,8 @@ public class ProjectPolicyController {
 
     private boolean isSocialModule(AuthModule module) {
         return module == AuthModule.OAUTH2_GOOGLE || module == AuthModule.OAUTH2_GITHUB ||
-               module == AuthModule.OAUTH2_APPLE || module == AuthModule.OAUTH2_LINKEDIN;
+               module == AuthModule.OAUTH2_APPLE || module == AuthModule.OAUTH2_LINKEDIN ||
+               module == AuthModule.OAUTH2_CUSTOM_OIDC;
     }
 
     private String getProviderForModule(AuthModule module) {
@@ -329,6 +367,7 @@ public class ProjectPolicyController {
             case OAUTH2_GITHUB -> "github";
             case OAUTH2_APPLE -> "apple";
             case OAUTH2_LINKEDIN -> "linkedin";
+            case OAUTH2_CUSTOM_OIDC -> "custom-oidc";
             default -> null;
         };
     }
@@ -339,12 +378,13 @@ public class ProjectPolicyController {
             case "github" -> AuthModule.OAUTH2_GITHUB;
             case "apple" -> AuthModule.OAUTH2_APPLE;
             case "linkedin" -> AuthModule.OAUTH2_LINKEDIN;
+            case "custom-oidc" -> AuthModule.OAUTH2_CUSTOM_OIDC;
             default -> null;
         };
     }
 
     private boolean isValidProvider(String provider) {
-        return Set.of("google", "github", "apple", "linkedin").contains(provider.toLowerCase());
+        return Set.of("google", "github", "apple", "linkedin", "custom-oidc").contains(provider.toLowerCase());
     }
 
     private String getDefaultScopes(String provider) {
@@ -353,8 +393,13 @@ public class ProjectPolicyController {
             case "github" -> "read:user,user:email";
             case "apple" -> "openid,name,email";
             case "linkedin" -> "openid,profile,email";
+            case "custom-oidc" -> "openid,profile,email";
             default -> "openid,profile,email";
         };
+    }
+
+    private String normalizeNullable(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private String maskSecret(String secret) {
@@ -381,9 +426,16 @@ public class ProjectPolicyController {
     public record OAuthProviderDto(
             UUID id,
             String provider,
+            String displayName,
             String clientId,
             String clientSecretMasked,
             String scopes,
+            String issuerUri,
+            String authorizationUri,
+            String tokenUri,
+            String userInfoUri,
+            String jwkSetUri,
+            String userNameAttribute,
             String environment,
             boolean enabled,
             String createdAt,
@@ -407,6 +459,13 @@ public class ProjectPolicyController {
         private String clientSecret;
 
         private String scopes;
+        private String displayName;
+        private String issuerUri;
+        private String authorizationUri;
+        private String tokenUri;
+        private String userInfoUri;
+        private String jwkSetUri;
+        private String userNameAttribute;
         private String environment;
         private Boolean enabled;
     }

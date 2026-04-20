@@ -33,10 +33,16 @@ public class ProjectOAuthProvider {
     private UUID projectId;
 
     /**
-     * Provider identifier: "google", "github", "apple", "linkedin".
+     * Provider identifier: "google", "github", "apple", "linkedin", "custom-oidc".
      */
     @Column(nullable = false, length = 50)
     private String provider;
+
+    /**
+     * Optional UI label for the provider button, primarily used for custom OIDC.
+     */
+    @Column(name = "display_name", length = 100)
+    private String displayName;
 
     /**
      * The developer's OAuth app client ID (e.g., Google Console client ID).
@@ -56,6 +62,24 @@ public class ProjectOAuthProvider {
     @Column(length = 500)
     @Builder.Default
     private String scopes = "";
+
+    @Column(name = "issuer_uri", length = 1000)
+    private String issuerUri;
+
+    @Column(name = "authorization_uri", length = 1000)
+    private String authorizationUri;
+
+    @Column(name = "token_uri", length = 1000)
+    private String tokenUri;
+
+    @Column(name = "user_info_uri", length = 1000)
+    private String userInfoUri;
+
+    @Column(name = "jwk_set_uri", length = 1000)
+    private String jwkSetUri;
+
+    @Column(name = "user_name_attribute", length = 100)
+    private String userNameAttribute;
 
     /**
      * Environment this config applies to.

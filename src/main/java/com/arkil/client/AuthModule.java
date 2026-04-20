@@ -30,6 +30,11 @@ public enum AuthModule {
     OAUTH2_LINKEDIN("LinkedIn", "Sign in with LinkedIn"),
 
     /**
+     * Custom OIDC / enterprise SSO provider.
+     */
+    OAUTH2_CUSTOM_OIDC("Enterprise SSO", "Sign in with your OIDC identity provider"),
+
+    /**
      * Magic link passwordless authentication.
      */
     MAGIC_LINK("Magic Link", "Passwordless sign-in via email link"),
