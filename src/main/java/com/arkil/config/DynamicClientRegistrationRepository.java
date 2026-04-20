@@ -161,6 +161,10 @@ public class DynamicClientRegistrationRepository implements ClientRegistrationRe
     }
 
     private ClientRegistration buildClientRegistration(String provider, ProjectOAuthProvider oauthProvider) {
+        if ("custom-oidc".equalsIgnoreCase(provider)) {
+            return buildCustomOidcRegistration(oauthProvider);
+        }
+
         ProviderDefaults defaults = PROVIDER_DEFAULTS.get(provider.toLowerCase());
         if (defaults == null) {
             log.warn("No provider defaults for: {}", provider);
@@ -186,6 +190,33 @@ public class DynamicClientRegistrationRepository implements ClientRegistrationRe
 
         if (defaults.jwkSetUri != null) {
             builder.jwkSetUri(defaults.jwkSetUri);
+        }
+
+        return builder.build();
+    }
+
+    private ClientRegistration buildCustomOidcRegistration(ProjectOAuthProvider oauthProvider) {
+        String[] scopes = oauthProvider.getScopes() != null && !oauthProvider.getScopes().isBlank()
+                ? oauthProvider.getScopes().split(",")
+                : new String[]{"openid", "profile", "email"};
+
+        var builder = ClientRegistration.withRegistrationId("custom-oidc")
+                .clientId(oauthProvider.getClientId())
+                .clientSecret(encryptionService.decrypt(oauthProvider.getClientSecretEncrypted()))
+                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .redirectUri("{baseUrl}/login/oauth2/code/{registrationId}")
+                .scope(scopes)
+                .authorizationUri(oauthProvider.getAuthorizationUri())
+                .tokenUri(oauthProvider.getTokenUri())
+                .userInfoUri(oauthProvider.getUserInfoUri())
+                .userNameAttributeName(oauthProvider.getUserNameAttribute())
+                .clientName(oauthProvider.getDisplayName() != null && !oauthProvider.getDisplayName().isBlank()
+                        ? oauthProvider.getDisplayName()
+                        : "Enterprise SSO");
+
+        if (oauthProvider.getJwkSetUri() != null && !oauthProvider.getJwkSetUri().isBlank()) {
+            builder.jwkSetUri(oauthProvider.getJwkSetUri());
         }
 
         return builder.build();
