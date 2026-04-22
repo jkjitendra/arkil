@@ -17,4 +17,6 @@ public interface WebhookRepository extends JpaRepository<Webhook, UUID> {
     Optional<Webhook> findByProjectIdAndId(UUID projectId, UUID id);
 
     long countByProjectId(UUID projectId);
+
+    void deleteByProjectId(UUID projectId);
 }
