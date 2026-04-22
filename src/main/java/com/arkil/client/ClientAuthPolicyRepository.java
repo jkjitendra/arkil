@@ -14,4 +14,8 @@ public interface ClientAuthPolicyRepository extends JpaRepository<ClientAuthPoli
     Optional<ClientAuthPolicy> findByRegisteredClientInternalId(String registeredClientInternalId);
 
     boolean existsByClientId(String clientId);
+
+    void deleteByRegisteredClientInternalId(String registeredClientInternalId);
+
+    void deleteByClientId(String clientId);
 }

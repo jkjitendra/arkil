@@ -5,6 +5,7 @@ import com.arkil.client.ClientAuthPolicy;
 import com.arkil.client.ClientAuthPolicyRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.oidc.OidcScopes;
@@ -38,6 +39,7 @@ public class RegisteredClientBridgeService {
 
     private final RegisteredClientRepository registeredClientRepository;
     private final ClientAuthPolicyRepository clientAuthPolicyRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     private static final String CLIENT_ID_PREFIX = "proj_";
 
@@ -158,5 +160,25 @@ public class RegisteredClientBridgeService {
      */
     public String getClientIdForProject(String slug) {
         return CLIENT_ID_PREFIX + slug;
+    }
+
+    @Transactional
+    public void deleteRegisteredClientForProject(Project project) {
+        String clientId = getClientIdForProject(project.getSlug());
+        RegisteredClient registeredClient = registeredClientRepository.findByClientId(clientId);
+        String internalId = project.getRegisteredClientId();
+        if (registeredClient != null) {
+            internalId = registeredClient.getId();
+        }
+
+        if (internalId != null) {
+            jdbcTemplate.update("DELETE FROM oauth2_authorization_consent WHERE registered_client_id = ?", internalId);
+            jdbcTemplate.update("DELETE FROM oauth2_authorization WHERE registered_client_id = ?", internalId);
+            jdbcTemplate.update("DELETE FROM oauth2_registered_client WHERE id = ?", internalId);
+            clientAuthPolicyRepository.deleteByRegisteredClientInternalId(internalId);
+        }
+
+        clientAuthPolicyRepository.deleteByClientId(clientId);
+        log.info("Deleted RegisteredClient and auth policy for project {}", project.getSlug());
     }
 }
