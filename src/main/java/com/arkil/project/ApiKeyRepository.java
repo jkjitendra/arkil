@@ -64,4 +64,6 @@ public interface ApiKeyRepository extends JpaRepository<ApiKey, UUID> {
            "WHERE k.publishableKey = :pk AND p.deletedAt IS NULL " +
            "AND k.status IN ('ACTIVE', 'ROTATING')")
     Optional<ApiKey> findByPublishableKeyWithActiveProject(String pk);
+
+    void deleteByProjectId(UUID projectId);
 }
