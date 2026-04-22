@@ -24,6 +24,9 @@ public class ProjectService {
     private final ApiKeyService apiKeyService;
     private final RegisteredClientBridgeService registeredClientBridge;
 
+    @org.springframework.beans.factory.annotation.Value("${arkil.project.deletion-retention-days:7}")
+    private long deletionRetentionDays;
+
     /**
      * Create a new project with initial API keys and an OAuth2 RegisteredClient.
      */
@@ -187,7 +190,7 @@ public class ProjectService {
         }
 
         // Check if within retention period (7 days)
-        Instant cutoff = Instant.now().minus(Duration.ofDays(7));
+        Instant cutoff = Instant.now().minus(Duration.ofDays(deletionRetentionDays));
         if (project.getDeletedAt().isBefore(cutoff)) {
             throw new IllegalStateException("Project cannot be restored - retention period expired");
         }
@@ -212,6 +215,10 @@ public class ProjectService {
      */
     public List<Project> listDeletedProjectsByTenant(UUID tenantId) {
         return projectRepository.findByTenantIdAndDeletedAtIsNotNull(tenantId);
+    }
+
+    public Duration getDeletionRetention() {
+        return Duration.ofDays(deletionRetentionDays);
     }
 
     // ─────────────────────────────────────────────────────────────────
