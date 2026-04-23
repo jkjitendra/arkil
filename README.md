@@ -1,106 +1,110 @@
-# 🔐 Arkil (अर्कील)
+# Arkil
 
-> **The Dynamic Auth Fortress.**
-> *Derived from Sanskrit: **Argala** (The Bolt) + **Kilaka** (The Pin).*
+Arkil is a multi-tenant authentication server built on Spring Boot and Spring Authorization Server. It supports hosted login, password and magic-link auth, social login, passkeys, TOTP MFA, project-scoped OAuth client registration, webhook delivery, and a dashboard for tenant admins.
 
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen) ![Java](https://img.shields.io/badge/Java-21-orange)
+## What Arkil ships today
 
-**Arkil** is a lightweight, high-performance Authentication Server designed for dynamic ecosystems. Unlike static auth templates, Arkil treats Identity Providers (IdPs) and Claims as data, not code. It allows for **runtime configuration** of OAuth strategies, **multi-tenant isolation**, and **hot-swappable security policies** without restarting the application.
+- Runtime project auth policy configuration for `EMAIL_PASSWORD`, `MAGIC_LINK`, `PASSKEY`, `TOTP`, `OAUTH2_GOOGLE`, `OAUTH2_GITHUB`, `OAUTH2_APPLE`, `OAUTH2_LINKEDIN`, and `OAUTH2_CUSTOM_OIDC`
+- Per-project OAuth provider credentials stored in the database, including explicit endpoint metadata for custom OIDC providers
+- Hosted browser flows for sign-up, login, password reset, magic links, email verification, passkeys, and TOTP challenges
+- Dashboard and admin APIs for project management, API keys, webhook subscriptions, MFA factors, and user lifecycle actions
+- Transactional email through either:
+  - `console` provider for local development
+  - `smtp` provider for production
+- Rate limiting backends:
+  - in-memory for local development
+  - Redis-backed counters for distributed deployments
+- Soft-delete for projects with scheduled permanent cleanup after the retention window
 
----
+## Architecture
 
-## 🚀 Key Differentiators
+Arkil uses Spring Authorization Server for OAuth2 / OIDC issuance, JPA for durable state, and optional Redis for distributed throttling.
 
-* **⚡ Dynamic Provider Injection:** Add new OAuth providers (Google, Apple, Custom OIDC) via database configuration. No code changes required.
-* **🏢 Native Multi-Tenancy:** Single deployment serves multiple applications with isolated user bases and claim mappings.
-* **🛡️ Apple Sign-In Ready:** Pre-built, battle-tested implementation of Apple's complex OIDC flow (including name extraction on first auth).
-* **🔄 Smart Token Rotation:** Secure Refresh Token system with device tracking, rotation reuse detection, and remote revocation.
-* **🚦 Adaptive Rate Limiting:** IP-based throttling using `Bucket4j` to prevent brute-force attacks.
+Key runtime components:
 
----
+- `RegisteredClientBridgeService`: keeps each project synchronized with a Spring Authorization Server `RegisteredClient`
+- `DynamicClientRegistrationRepository`: resolves built-in and custom OIDC providers from database configuration at request time
+- `PolicyEnforcementFilter`: blocks disabled auth methods on hosted and factor routes
+- `ProjectCleanupService`: permanently deletes expired soft-deleted projects and their registered-client artifacts
 
-## 🏗️ Architecture
+## Configuration
 
-Arkil isolates the immutable core security logic from the mutable provider configurations.
+Main application properties live in:
 
-```text
-arkil-server/
-├── core/                     # The Immutable "Argala" (Bolt)
-│   ├── jwt/                  # HS512 Signing & Claim Injection
-│   ├── token/                # Refresh Token Rotation Logic
-│   └── filter/               # Security Chain & Rate Limiting
-│
-├── providers/                # The Dynamic "Kilaka" (Pin)
-│   ├── factory/              # OAuthServiceFactory (Runtime instantiation)
-│   ├── impl/                 # Apple, Google, Facebook Implementations
-│   └── config/               # DB-loaded Provider Configurations
-│
-└── api/                      # The Interface
-    └── AuthController.java   # Unified Entry Point (Provider Agnostic)
+- `src/main/resources/application.properties`
+- `src/main/resources/application-prod.properties`
+
+Important settings:
+
+- Email
+  - `arkil.email.provider=console|smtp`
+  - `arkil.email.from`
+  - `arkil.email.base-url`
+  - `spring.mail.host`
+  - `spring.mail.port`
+  - `spring.mail.username`
+  - `spring.mail.password`
+- Rate limiting
+  - `arkil.ratelimit.backend=memory|redis`
+  - `arkil.ratelimit.redis.key-prefix`
+  - `spring.data.redis.host`
+  - `spring.data.redis.port`
+  - `spring.data.redis.password`
+- MFA / passkeys
+  - `arkil.mfa.totp.issuer`
+  - `arkil.webauthn.rp-name`
+  - `arkil.webauthn.rp-id`
+  - `arkil.webauthn.origin`
+  - `arkil.webauthn.timeout-ms`
+- Project lifecycle
+  - `arkil.project.deletion-retention-days`
+  - `arkil.project.cleanup-cron`
+
+## Local development
+
+Prerequisites:
+
+- Java 21+
+- Node.js 20+
+
+Start the backend:
+
+```bash
+./mvnw spring-boot:run
 ```
 
-## Architecture Overview
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                        ARKIL AUTH SERVER                          │
-├───────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                │
-│  │ UI Layer    │  │ Endpoint    │  │ Provider    │  ← 3 Layers    │
-│  │ (Thymeleaf) │  │ Guards      │  │ Guards      │    of          │
-│  │ Hide        │  │ Block 403   │  │ Reject auth │    Enforcement │
-│  └─────────────┘  └─────────────┘  └─────────────┘                │
-├───────────────────────────────────────────────────────────────────┤
-│  Available Auth Modules:                                          │
-│  • EMAIL_PASSWORD  - Username/password login                      │
-│  • OAUTH2_GOOGLE   - "Sign in with Google"                        │
-│  • OAUTH2_GITHUB   - "Sign in with GitHub"                        │
-│  • OAUTH2_APPLE    - "Sign in with Apple"                         │
-│  • PASSKEY         - WebAuthn/Fingerprint                         │
-│  • TOTP            - Authenticator app codes                      │
-└───────────────────────────────────────────────────────────────────┘
+Start the dashboard:
+
+```bash
+cd dashboard
+npm install
+npm run dev
 ```
 
-## 🛠️ Core Capabilities
-1. Configurable Claims Engine: <br/>
-Don't hardcode claims. Arkil injects claims dynamically based on the Tenant and Role context.
+Default local services:
 
-```text
-// Claims are injected dynamically at runtime
-String token = jwtUtil.generateToken(user, tenantConfig.getCustomClaims());
+- Backend: `http://localhost:8080`
+- Dashboard: `http://localhost:5173`
+
+## Production notes
+
+- Set a real `ARKIL_ENCRYPTION_KEY`
+- Use `arkil.email.provider=smtp`
+- Set `arkil.ratelimit.backend=redis`
+- Configure `ARKIL_WEBAUTHN_RP_ID` and `ARKIL_WEBAUTHN_ORIGIN` to the auth domain you serve
+- Keep `application-prod.properties` aligned with your deployment environment variables
+
+## Verification
+
+Backend:
+
+```bash
+./mvnw test
 ```
 
-2. The "Universal" Auth Facade: <br/>
-A clean abstraction layer that standardizes how user data is retrieved, regardless of whether they logged in via Password, Google, or Apple.
+Dashboard:
 
-3. Database-Driven OAuth: <br/>
-Instead of application.yml, providers are loaded from the database: | Provider | ClientID | Secret | Scopes | Tenant_ID | | :--- | :--- | :--- | :--- | :--- | | google | 123-xyz... | *** | email,profile | app_A | | apple | com.app... | *** | name,email | app_A | | google | 789-abc... | *** | email | app_B |
-
-## 🔌 API Endpoints
+```bash
+cd dashboard
+npm run build
 ```
-Method |	Endpoint               |	Description
-POST   |	/auth/login            |	Standard username/password login
-POST   |	/auth/refresh          |	Rotate access token using refresh token
-POST   |	/auth/oauth/{provider} |	Initiate dynamic OAuth flow (e.g., /auth/oauth/apple)
-POST   |	/auth/register         |	User registration with email verification trigger
-GET    |	/auth/me               |	Get current authenticated user context
-```
-
-## 📦 Getting Started
-### Prerequisites
- - Java 21+
- - PostgreSQL / MySQL
- - Redis (Optional, for distributed rate limiting)
-
-### Installation
-1. <b>Clone the Citadel:</b>
-   ```bash
-   git clone [https://github.com/jkjitendra/arkil.git](https://github.com/jkjitendra/arkil.git)
-   ```
-2. <b>Configure Database:</b> Update src/main/resources/application.properties with your credentials.
-3. <b>Run the Bolt:</b>
-   ```bash
-    ./mvnw spring-boot:run
-   ```
-## 🤝 Contribution
-Arkil is designed to be the foundational "Bolt" for your infrastructure. Pull requests are welcome for new Provider Implementations (e.g., GitHub, LinkedIn) or storage strategies.
-

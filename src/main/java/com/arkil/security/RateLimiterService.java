@@ -15,19 +15,20 @@ import org.springframework.stereotype.Service;
 @Service
 public class RateLimiterService {
 
-    // IP-based rate limits (more restrictive)
-    private final RateLimitBucket ipBucket;
-
-    // Email-based rate limits (for auth endpoints)
-    private final RateLimitBucket emailBucket;
-
-    // Project-based rate limits
-    private final RateLimitBucket projectBucket;
-
-    // Login attempt limits (per username@project)
-    private final RateLimitBucket loginBucket;
+    private final RateLimitBackend backend;
+    private final int ipMax;
+    private final int ipWindow;
+    private final int emailMax;
+    private final int emailWindow;
+    private final int projectMax;
+    private final int projectWindow;
+    private final int loginMax;
+    private final int loginWindow;
+    private final int hostedLoginMaxAttempts;
+    private final int hostedLoginWindowSeconds;
 
     public RateLimiterService(
+            RateLimitBackend backend,
             @Value("${arkil.ratelimit.ip.max:100}") int ipMax,
             @Value("${arkil.ratelimit.ip.window:60}") int ipWindow,
             @Value("${arkil.ratelimit.email.max:5}") int emailMax,
@@ -35,12 +36,20 @@ public class RateLimiterService {
             @Value("${arkil.ratelimit.project.max:1000}") int projectMax,
             @Value("${arkil.ratelimit.project.window:60}") int projectWindow,
             @Value("${arkil.ratelimit.login.max:5}") int loginMax,
-            @Value("${arkil.ratelimit.login.window:300}") int loginWindow) {
-
-        this.ipBucket = new RateLimitBucket(ipMax, ipWindow);
-        this.emailBucket = new RateLimitBucket(emailMax, emailWindow);
-        this.projectBucket = new RateLimitBucket(projectMax, projectWindow);
-        this.loginBucket = new RateLimitBucket(loginMax, loginWindow);
+            @Value("${arkil.ratelimit.login.window:300}") int loginWindow,
+            @Value("${arkil.security.rate-limit.max-attempts:10}") int hostedLoginMaxAttempts,
+            @Value("${arkil.security.rate-limit.window-seconds:300}") int hostedLoginWindowSeconds) {
+        this.backend = backend;
+        this.ipMax = ipMax;
+        this.ipWindow = ipWindow;
+        this.emailMax = emailMax;
+        this.emailWindow = emailWindow;
+        this.projectMax = projectMax;
+        this.projectWindow = projectWindow;
+        this.loginMax = loginMax;
+        this.loginWindow = loginWindow;
+        this.hostedLoginMaxAttempts = hostedLoginMaxAttempts;
+        this.hostedLoginWindowSeconds = hostedLoginWindowSeconds;
 
         log.info("Rate limiter initialized: IP={}/{}, Email={}/{}, Project={}/{}, Login={}/{}",
                 ipMax, ipWindow, emailMax, emailWindow, projectMax, projectWindow, loginMax, loginWindow);
@@ -50,21 +59,21 @@ public class RateLimiterService {
      * Check IP rate limit.
      */
     public RateLimitBucket.RateLimitResult checkIp(String ip) {
-        return ipBucket.tryConsume(ip);
+        return backend.tryConsume("ip", ip, ipMax, ipWindow);
     }
 
     /**
      * Check email rate limit (for password reset, magic link, etc.)
      */
     public RateLimitBucket.RateLimitResult checkEmail(String email) {
-        return emailBucket.tryConsume(email.toLowerCase());
+        return backend.tryConsume("email", email.toLowerCase(), emailMax, emailWindow);
     }
 
     /**
      * Check project rate limit.
      */
     public RateLimitBucket.RateLimitResult checkProject(String projectId) {
-        return projectBucket.tryConsume(projectId);
+        return backend.tryConsume("project", projectId, projectMax, projectWindow);
     }
 
     /**
@@ -73,7 +82,11 @@ public class RateLimiterService {
      */
     public RateLimitBucket.RateLimitResult checkLogin(String username, String projectId) {
         String key = username.toLowerCase() + "@" + projectId;
-        return loginBucket.tryConsume(key);
+        return backend.tryConsume("login", key, loginMax, loginWindow);
+    }
+
+    public RateLimitBucket.RateLimitResult checkHostedLoginIp(String ip) {
+        return backend.tryConsume("hosted-login-ip", ip, hostedLoginMaxAttempts, hostedLoginWindowSeconds);
     }
 
     /**
@@ -111,10 +124,7 @@ public class RateLimiterService {
      */
     @Scheduled(fixedRate = 60000) // Every minute
     public void cleanup() {
-        ipBucket.cleanup();
-        emailBucket.cleanup();
-        projectBucket.cleanup();
-        loginBucket.cleanup();
+        backend.cleanup();
         log.debug("Rate limit buckets cleaned up");
     }
 }
