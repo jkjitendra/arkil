@@ -22,4 +22,6 @@ public interface ProjectOAuthProviderRepository extends JpaRepository<ProjectOAu
 
     boolean existsByProjectIdAndProviderAndEnvironment(
             UUID projectId, String provider, Project.Environment environment);
+
+    void deleteByProjectId(UUID projectId);
 }
