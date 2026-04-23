@@ -8,18 +8,13 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Rate limiting filter for login endpoints.
@@ -27,20 +22,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class LoginRateLimitFilter extends OncePerRequestFilter {
 
     private final AuditService auditService;
-    private final Map<String, RateLimitBucket> buckets = new ConcurrentHashMap<>();
-
-    @Value("${arkil.security.rate-limit.max-attempts:10}")
-    private int maxAttempts;
-
-    @Value("${arkil.security.rate-limit.window-seconds:300}")
-    private int windowSeconds;
-
-    public LoginRateLimitFilter(AuditService auditService) {
-        this.auditService = auditService;
-    }
+    private final RateLimiterService rateLimiterService;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -49,14 +35,8 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String ip = extractIpAddress(request);
-        RateLimitBucket bucket = buckets.compute(ip, (key, existing) -> {
-            if (existing == null || existing.isExpired(windowSeconds)) {
-                return new RateLimitBucket();
-            }
-            return existing;
-        });
-
-        if (bucket.incrementAndCheck(maxAttempts)) {
+        RateLimitBucket.RateLimitResult result = rateLimiterService.checkHostedLoginIp(ip);
+        if (!result.isAllowed()) {
             // Rate limit exceeded
             log.warn("Rate limit exceeded for IP: {}", ip);
             auditService.logEvent(
@@ -71,6 +51,7 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
 
             response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
             response.setContentType("application/json");
+            response.setHeader("Retry-After", String.valueOf(result.getRetryAfterSeconds()));
             response.getWriter().write("""
                     {"error": "too_many_requests", "message": "Rate limit exceeded. Please try again later."}
                     """);
@@ -97,21 +78,5 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
             return xRealIp;
         }
         return request.getRemoteAddr();
-    }
-
-    /**
-     * Simple bucket for tracking request counts per time window.
-     */
-    private static class RateLimitBucket {
-        private final Instant createdAt = Instant.now();
-        private final AtomicInteger count = new AtomicInteger(0);
-
-        boolean isExpired(int windowSeconds) {
-            return Duration.between(createdAt, Instant.now()).getSeconds() > windowSeconds;
-        }
-
-        boolean incrementAndCheck(int maxAttempts) {
-            return count.incrementAndGet() > maxAttempts;
-        }
     }
 }
