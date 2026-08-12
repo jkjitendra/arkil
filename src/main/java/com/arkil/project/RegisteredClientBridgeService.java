@@ -3,6 +3,7 @@ package com.arkil.project;
 import com.arkil.client.AuthModule;
 import com.arkil.client.ClientAuthPolicy;
 import com.arkil.client.ClientAuthPolicyRepository;
+import com.arkil.config.ArkilUrlProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -40,6 +41,7 @@ public class RegisteredClientBridgeService {
     private final RegisteredClientRepository registeredClientRepository;
     private final ClientAuthPolicyRepository clientAuthPolicyRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final ArkilUrlProperties urlProperties;
 
     private static final String CLIENT_ID_PREFIX = "proj_";
 
@@ -83,8 +85,7 @@ public class RegisteredClientBridgeService {
         if (redirectUris != null && !redirectUris.isEmpty()) {
             redirectUris.forEach(builder::redirectUri);
         } else {
-            // Default redirect URI for development
-            builder.redirectUri("http://localhost:3000/callback");
+            builder.redirectUri(defaultDevelopmentRedirectUri(project));
         }
 
         RegisteredClient registeredClient = builder.build();
@@ -134,7 +135,7 @@ public class RegisteredClientBridgeService {
                     if (project.getRedirectUris() != null && !project.getRedirectUris().isEmpty()) {
                         uris.addAll(project.getRedirectUris());
                     } else {
-                        uris.add("http://localhost:3000/callback");
+                        uris.add(defaultDevelopmentRedirectUri(project));
                     }
                 })
                 .build();
@@ -153,6 +154,14 @@ public class RegisteredClientBridgeService {
         });
 
         log.info("Updated RegisteredClient and auth policy for project {}", project.getSlug());
+    }
+
+    private String defaultDevelopmentRedirectUri(Project project) {
+        if (project.getEnvironment() == Project.Environment.PRODUCTION) {
+            throw new IllegalArgumentException(
+                    "Production projects must configure at least one HTTPS redirect URI");
+        }
+        return urlProperties.dashboard() + "/callback";
     }
 
     /**

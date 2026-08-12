@@ -39,7 +39,7 @@ public class PasskeyService {
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
 
-    @Value("${arkil.email.base-url:http://localhost:8080}")
+    @Value("${arkil.email.base-url}")
     private String baseUrl;
 
     @Value("${arkil.webauthn.rp-name:Arkil}")

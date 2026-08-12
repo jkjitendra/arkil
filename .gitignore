@@ -30,3 +30,9 @@ target/
 .DS_Store
 
 node_modules
+
+# Developer-specific service addresses. The tracked mode files document the
+# shared local and production defaults; these files stay on each machine.
+dashboard/.env.local
+dashboard/.env.*.local
+src/main/resources/application-local.properties
