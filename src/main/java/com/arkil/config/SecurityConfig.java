@@ -48,6 +48,7 @@ public class SecurityConfig {
     private final AuthenticationFailureHandler oauth2FailureHandler;
     private final ProjectWebhookEventService projectWebhookEventService;
     private final UserRepository userRepository;
+    private final ArkilUrlProperties urlProperties;
 
     public SecurityConfig(LoginRateLimitFilter loginRateLimitFilter,
                           ClientContextFilter clientContextFilter,
@@ -61,7 +62,8 @@ public class SecurityConfig {
                           AuthenticationSuccessHandler oauth2SuccessHandler,
                           AuthenticationFailureHandler oauth2FailureHandler,
                           ProjectWebhookEventService projectWebhookEventService,
-                          UserRepository userRepository) {
+                          UserRepository userRepository,
+                          ArkilUrlProperties urlProperties) {
         this.loginRateLimitFilter = loginRateLimitFilter;
         this.clientContextFilter = clientContextFilter;
         this.policyEnforcementFilter = policyEnforcementFilter;
@@ -75,6 +77,7 @@ public class SecurityConfig {
         this.oauth2FailureHandler = oauth2FailureHandler;
         this.projectWebhookEventService = projectWebhookEventService;
         this.userRepository = userRepository;
+        this.urlProperties = urlProperties;
     }
 
     @Bean
@@ -142,7 +145,7 @@ public class SecurityConfig {
                         .permitAll()
                 )
                 .logout(logout -> logout
-                        .logoutSuccessUrl("http://localhost:5173/")
+                        .logoutSuccessUrl(urlProperties.dashboard() + "/")
                         .invalidateHttpSession(true)
                         .clearAuthentication(true)
                         .deleteCookies("JSESSIONID")

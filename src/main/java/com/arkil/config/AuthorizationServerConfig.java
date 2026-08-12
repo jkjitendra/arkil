@@ -36,9 +36,12 @@ import java.util.UUID;
 public class AuthorizationServerConfig {
 
     private final ProjectCorsConfigurationSource corsConfigurationSource;
+    private final ArkilUrlProperties urlProperties;
 
-    public AuthorizationServerConfig(ProjectCorsConfigurationSource corsConfigurationSource) {
+    public AuthorizationServerConfig(ProjectCorsConfigurationSource corsConfigurationSource,
+                                    ArkilUrlProperties urlProperties) {
         this.corsConfigurationSource = corsConfigurationSource;
+        this.urlProperties = urlProperties;
     }
 
     /**
@@ -83,7 +86,7 @@ public class AuthorizationServerConfig {
      */
     @Bean
     public JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
-        return NimbusJwtDecoder.withJwkSetUri("http://localhost:8080/oauth2/jwks").build();
+        return NimbusJwtDecoder.withJwkSetUri(urlProperties.authServer() + "/oauth2/jwks").build();
     }
 
     /**
@@ -120,6 +123,8 @@ public class AuthorizationServerConfig {
      */
     @Bean
     public AuthorizationServerSettings authorizationServerSettings() {
-        return AuthorizationServerSettings.builder().build();
+        return AuthorizationServerSettings.builder()
+                .issuer(urlProperties.authServer())
+                .build();
     }
 }

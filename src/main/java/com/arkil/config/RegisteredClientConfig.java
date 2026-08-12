@@ -7,6 +7,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
@@ -22,6 +23,8 @@ import org.springframework.security.oauth2.server.authorization.settings.ClientS
 import org.springframework.security.oauth2.server.authorization.settings.TokenSettings;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -34,6 +37,8 @@ import java.util.UUID;
 @Configuration
 @Slf4j
 public class RegisteredClientConfig {
+
+    private static final String DASHBOARD_CLIENT_ID = "arkil-dashboard";
 
     @Bean
     public RegisteredClientRepository registeredClientRepository(JdbcTemplate jdbcTemplate) {
@@ -59,35 +64,42 @@ public class RegisteredClientConfig {
      */
     @Bean
     @Order(5) // Run before DemoDataBootstrap (order 10)
-    ApplicationRunner clientBootstrap(RegisteredClientRepository repository) {
-        return new ClientBootstrap(repository);
+    ApplicationRunner clientBootstrap(RegisteredClientRepository repository,
+                                      ArkilUrlProperties urlProperties,
+                                      Environment environment) {
+        return new ClientBootstrap(repository, urlProperties,
+                !environment.matchesProfiles("prod", "production"));
     }
 
     @RequiredArgsConstructor
     static class ClientBootstrap implements ApplicationRunner {
 
         private final RegisteredClientRepository repository;
+        private final ArkilUrlProperties urlProperties;
+        private final boolean bootstrapDemoClient;
 
         @Override
         public void run(ApplicationArguments args) {
             bootstrapDashboardClient();
-            bootstrapDemoClient();
+            if (bootstrapDemoClient) {
+                bootstrapDemoClient();
+            }
         }
 
         private void bootstrapDashboardClient() {
-            if (repository.findByClientId("arkil-dashboard") != null) {
-                log.debug("arkil-dashboard client already exists in database");
+            RegisteredClient existingClient = repository.findByClientId(DASHBOARD_CLIENT_ID);
+            if (existingClient != null) {
+                reconcileDashboardRedirectUris(existingClient);
                 return;
             }
 
             RegisteredClient dashboardClient = RegisteredClient.withId(UUID.randomUUID().toString())
-                    .clientId("arkil-dashboard")
+                    .clientId(DASHBOARD_CLIENT_ID)
                     .clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
                     .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
                     .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
-                    .redirectUri("http://localhost:5173/callback")
-                    .redirectUri("http://localhost:5173/silent-refresh")
-                    .postLogoutRedirectUri("http://localhost:5173/")
+                    .redirectUris(uris -> uris.addAll(dashboardRedirectUris()))
+                    .postLogoutRedirectUri(dashboardPostLogoutRedirectUri())
                     .scope(OidcScopes.OPENID)
                     .scope(OidcScopes.PROFILE)
                     .scope(OidcScopes.EMAIL)
@@ -105,6 +117,54 @@ public class RegisteredClientConfig {
 
             repository.save(dashboardClient);
             log.info("Bootstrapped arkil-dashboard client into database");
+        }
+
+        /**
+         * The built-in dashboard client is an Arkil-owned client, so its redirect
+         * URI allow-list is safely reconciled to the active deployment. This both
+         * repairs old registrations and removes stale localhost callbacks when a
+         * database is promoted to production.
+         */
+        private void reconcileDashboardRedirectUris(RegisteredClient existingClient) {
+            if (existingClient.getRedirectUris().equals(Set.copyOf(dashboardRedirectUris()))
+                    && existingClient.getPostLogoutRedirectUris().equals(Set.of(dashboardPostLogoutRedirectUri()))) {
+                log.debug("arkil-dashboard client already has the active deployment redirect URIs");
+                return;
+            }
+
+            RegisteredClient.Builder updatedClient = RegisteredClient.withId(existingClient.getId())
+                    .clientId(existingClient.getClientId())
+                    .clientAuthenticationMethods(methods -> methods.addAll(existingClient.getClientAuthenticationMethods()))
+                    .authorizationGrantTypes(types -> types.addAll(existingClient.getAuthorizationGrantTypes()))
+                    .redirectUris(uris -> uris.addAll(dashboardRedirectUris()))
+                    .postLogoutRedirectUris(uris -> uris.add(dashboardPostLogoutRedirectUri()))
+                    .scopes(scopes -> scopes.addAll(existingClient.getScopes()))
+                    .clientSettings(existingClient.getClientSettings())
+                    .tokenSettings(existingClient.getTokenSettings());
+
+            if (existingClient.getClientIdIssuedAt() != null) {
+                updatedClient.clientIdIssuedAt(existingClient.getClientIdIssuedAt());
+            }
+            if (existingClient.getClientSecret() != null) {
+                updatedClient.clientSecret(existingClient.getClientSecret());
+            }
+            if (existingClient.getClientSecretExpiresAt() != null) {
+                updatedClient.clientSecretExpiresAt(existingClient.getClientSecretExpiresAt());
+            }
+
+            repository.save(updatedClient.build());
+            log.info("Reconciled arkil-dashboard redirect URIs with the active deployment");
+        }
+
+        private List<String> dashboardRedirectUris() {
+            return List.of(
+                    urlProperties.dashboard() + "/callback",
+                    urlProperties.dashboard() + "/silent-refresh"
+            );
+        }
+
+        private String dashboardPostLogoutRedirectUri() {
+            return urlProperties.dashboard() + "/";
         }
 
         private void bootstrapDemoClient() {

@@ -2,6 +2,7 @@ package com.arkil.security;
 
 import com.arkil.client.ClientAuthPolicy;
 import com.arkil.client.ClientAuthPolicyRepository;
+import com.arkil.config.ArkilUrlProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +11,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,16 +25,7 @@ import java.util.Optional;
 public class ProjectCorsConfigurationSource implements CorsConfigurationSource {
 
     private final ClientAuthPolicyRepository policyRepository;
-
-    // Default allowed origins for development
-    private static final List<String> DEV_ORIGINS = Arrays.asList(
-            "http://localhost:3000",
-            "http://localhost:5173",  // Vite dev server (dashboard)
-            "http://localhost:8080",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:8080"
-    );
+    private final ArkilUrlProperties urlProperties;
 
     @Override
     public CorsConfiguration getCorsConfiguration(HttpServletRequest request) {
@@ -51,16 +44,15 @@ public class ProjectCorsConfigurationSource implements CorsConfigurationSource {
                     config.setAllowedOrigins(allowedOrigins);
                     log.debug("Using project CORS origins for client {}: {}", clientId, allowedOrigins);
                 } else {
-                    // Fall back to dev origins if none configured
-                    config.setAllowedOrigins(DEV_ORIGINS);
-                    log.debug("No CORS origins configured for client {}, using dev defaults", clientId);
+                    config.setAllowedOrigins(fallbackOrigins());
+                    log.debug("No CORS origins configured for client {}, using platform defaults", clientId);
                 }
             } else {
-                config.setAllowedOrigins(DEV_ORIGINS);
+                config.setAllowedOrigins(fallbackOrigins());
             }
         } else {
-            // No client context, use dev defaults
-            config.setAllowedOrigins(DEV_ORIGINS);
+            // This covers the platform dashboard's own API requests.
+            config.setAllowedOrigins(fallbackOrigins());
         }
 
         // Standard CORS settings
@@ -82,6 +74,12 @@ public class ProjectCorsConfigurationSource implements CorsConfigurationSource {
         config.setMaxAge(3600L);
 
         return config;
+    }
+
+    private List<String> fallbackOrigins() {
+        List<String> origins = new ArrayList<>(urlProperties.platformCorsOrigins());
+        origins.addAll(urlProperties.developmentCorsOrigins());
+        return origins.stream().distinct().toList();
     }
 
     private String extractClientId(HttpServletRequest request) {
