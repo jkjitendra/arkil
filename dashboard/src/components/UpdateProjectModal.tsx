@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,7 @@ import {
 import { Loader2, X, Plus } from 'lucide-react'
 import { useUpdateProject } from '@/hooks/useProjects'
 import type { Project } from '@/lib/api'
+import { toast } from 'sonner'
 
 interface UpdateProjectModalProps {
   project: Project
@@ -157,14 +159,16 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
         redirectUris,
       })
       onOpenChange(false)
+      toast.success('Project updated')
     } catch (error) {
+      toast.error('Failed to update project')
       setErrors({ submit: error instanceof Error ? error.message : 'Failed to update project' })
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit Project</DialogTitle>
           <DialogDescription>
@@ -172,7 +176,7 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="min-w-0 space-y-4">
           <div>
             <label className="text-sm font-medium">Project Name</label>
             <Input
@@ -219,14 +223,16 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
             </div>
             <div>
               <label className="text-sm font-medium">Environment</label>
-              <select
+              <Select
                 value={environment}
-                onChange={(e) => setEnvironment(e.target.value as 'DEVELOPMENT' | 'PRODUCTION')}
-                className="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                onValueChange={(value) => setEnvironment(value as 'DEVELOPMENT' | 'PRODUCTION')}
               >
-                <option value="DEVELOPMENT">Development</option>
-                <option value="PRODUCTION">Production</option>
-              </select>
+                <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DEVELOPMENT">Development</SelectItem>
+                  <SelectItem value="PRODUCTION">Production</SelectItem>
+                </SelectContent>
+              </Select>
               <p className="mt-1 text-xs text-muted-foreground">
                 Production mode enforces stricter origin and redirect validation.
               </p>
@@ -241,8 +247,8 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
             </p>
             <div className="space-y-2">
               {allowedOrigins.map((origin) => (
-                <div key={origin} className="flex items-center gap-2">
-                  <code className="flex-1 bg-muted px-2 py-1 rounded text-sm font-mono truncate">
+                <div key={origin} className="flex min-w-0 items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-sm">
                     {origin}
                   </code>
                   <Button
@@ -256,12 +262,12 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
                   </Button>
                 </div>
               ))}
-              <div className="flex gap-2">
+              <div className="flex min-w-0 gap-2">
                 <Input
                   value={newOrigin}
                   onChange={(e) => setNewOrigin(e.target.value)}
                   placeholder="https://example.com"
-                  className="flex-1 font-mono text-sm"
+                  className="min-w-0 flex-1 font-mono text-sm"
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOrigin())}
                 />
                 <Button type="button" variant="outline" size="sm" onClick={addOrigin}>
@@ -280,8 +286,8 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
             </p>
             <div className="space-y-2">
               {redirectUris.map((uri) => (
-                <div key={uri} className="flex items-center gap-2">
-                  <code className="flex-1 bg-muted px-2 py-1 rounded text-sm font-mono truncate">
+                <div key={uri} className="flex min-w-0 items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-sm">
                     {uri}
                   </code>
                   <Button
@@ -295,12 +301,12 @@ export function UpdateProjectModal({ project, open, onOpenChange }: UpdateProjec
                   </Button>
                 </div>
               ))}
-              <div className="flex gap-2">
+              <div className="flex min-w-0 gap-2">
                 <Input
                   value={newRedirect}
                   onChange={(e) => setNewRedirect(e.target.value)}
                   placeholder="https://example.com/callback"
-                  className="flex-1 font-mono text-sm"
+                  className="min-w-0 flex-1 font-mono text-sm"
                   onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addRedirect())}
                 />
                 <Button type="button" variant="outline" size="sm" onClick={addRedirect}>
