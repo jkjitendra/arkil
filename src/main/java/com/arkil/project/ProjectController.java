@@ -1,5 +1,6 @@
 package com.arkil.project;
 
+import com.arkil.config.ArkilUrlProperties;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -38,6 +39,7 @@ public class ProjectController {
     private final RegisteredClientBridgeService registeredClientBridge;
     private final UrlValidator urlValidator;
     private final org.springframework.core.env.Environment env;
+    private final ArkilUrlProperties urlProperties;
 
     // ─────────────────────────────────────────────────────────────────
     // Project CRUD
@@ -151,9 +153,12 @@ public class ProjectController {
             }
         }
         
-        if (request.getRedirectUris() != null) {
+        List<String> effectiveRedirectUris = request.getRedirectUris() != null
+                ? request.getRedirectUris()
+                : existing.getRedirectUris();
+        if (!isDev || request.getRedirectUris() != null) {
             UrlValidator.ValidationResult redirectResult = urlValidator.validateRedirectUris(
-                    request.getRedirectUris(), isDev);
+                    effectiveRedirectUris, isDev);
             if (!redirectResult.valid()) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "error", "invalid_redirect_uris",
@@ -455,8 +460,7 @@ public class ProjectController {
     }
 
     private String getIssuerUrl() {
-        String port = env.getProperty("server.port", "8080");
-        return "http://localhost:" + port;
+        return urlProperties.authServer();
     }
 
     private DeletedProjectDto toDeletedDto(Project project) {

@@ -85,7 +85,9 @@ public class UrlValidator {
      */
     public ValidationResult validateRedirectUris(List<String> uris, boolean allowLocalhost) {
         if (uris == null || uris.isEmpty()) {
-            return ValidationResult.success();
+            return allowLocalhost
+                    ? ValidationResult.success()
+                    : ValidationResult.failure(List.of("Production projects require at least one redirect URI"));
         }
 
         List<String> errors = new ArrayList<>();
