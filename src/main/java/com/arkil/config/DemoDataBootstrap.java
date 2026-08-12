@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +33,7 @@ import java.util.List;
  * - A sample webhook for the demo project
  */
 @Component
+@Profile("!prod & !production")
 @Order(10)
 @RequiredArgsConstructor
 @Slf4j
@@ -165,4 +167,3 @@ public class DemoDataBootstrap implements ApplicationRunner {
         log.info("─────────────────────────────────────────────────────");
     }
 }
-
