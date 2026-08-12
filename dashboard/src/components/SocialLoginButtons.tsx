@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { useEffect, useState } from 'react'
 import { fetchPlatformProviders } from '@/lib/api'
+import { AUTH_SERVER_URL } from '@/lib/auth-config'
 
 const SOCIAL_PROVIDERS = [
   {
@@ -61,7 +62,7 @@ export function SocialLoginButtons({ mode, disabled, onSocialLogin }: SocialLogi
       void onSocialLogin(providerId)
     } else {
       // Default: redirect to the OAuth2 authorization endpoint on the auth server
-      window.location.href = `http://localhost:8080/oauth2/authorization/${providerId}`
+      window.location.assign(`${AUTH_SERVER_URL}/oauth2/authorization/${providerId}`)
     }
   }
 
@@ -81,7 +82,7 @@ export function SocialLoginButtons({ mode, disabled, onSocialLogin }: SocialLogi
             type="button"
             variant="outline"
             size="lg"
-            className="w-full"
+            className="w-full border-border bg-surface hover:bg-surface-raised"
             disabled={disabled}
             onClick={() => handleClick(provider.id)}
           >
@@ -99,10 +100,10 @@ export function AuthDivider() {
   return (
     <div className="relative my-6">
       <div className="absolute inset-0 flex items-center">
-        <span className="w-full border-t" />
+        <span className="w-full border-t border-border" />
       </div>
       <div className="relative flex justify-center text-xs uppercase">
-        <span className="bg-background px-2 text-muted-foreground">or</span>
+        <span className="bg-surface px-2 text-foreground-muted">or</span>
       </div>
     </div>
   )
