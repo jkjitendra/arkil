@@ -92,10 +92,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await userManager.signoutRedirect()
+      const currentUser = await userManager.getUser()
+
+      // Clear the dashboard session before leaving for the authorization server.
+      // The returned root route will therefore render the sign-in surface even
+      // when the provider does not send a separate logout callback to the SPA.
+      setUser(null)
+      await userManager.removeUser()
+
+      await userManager.signoutRedirect({ id_token_hint: currentUser?.id_token })
     } catch (error) {
       console.error('Logout failed:', error)
-      // Clear local state even if redirect fails
+      // Keep the dashboard signed out even if the provider redirect fails.
       setUser(null)
       await userManager.removeUser()
     }
