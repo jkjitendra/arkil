@@ -15,19 +15,16 @@ import {
   Webhook as WebhookIcon,
   Plus,
   Trash2,
-  Pencil,
   Zap,
   Copy,
   Check,
   Loader2,
   Globe,
-  AlertCircle,
-  Eye,
-  EyeOff,
 } from 'lucide-react'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useApiClient, type Webhook, type WebhookCreated } from '@/lib/api'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 
 // ─── Supported Events ───────────────────────────────────────────
 const WEBHOOK_EVENTS = [
@@ -80,7 +77,9 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
       // Show signing secret
       setNewSecret(created.signingSecret)
       setNewSecretModal(true)
+      toast.success('Webhook created')
     },
+    onError: () => toast.error('Failed to create webhook'),
   })
 
   const updateMutation = useMutation({
@@ -91,12 +90,15 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
       setEditDialogOpen(false)
       setEditingWebhook(null)
       resetForm()
+      toast.success('Webhook updated')
     },
+    onError: () => toast.error('Failed to update webhook'),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (webhookId: string) => api.deleteWebhook(projectId, webhookId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['webhooks', projectId] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['webhooks', projectId] }); toast.success('Webhook deleted') },
+    onError: () => toast.error('Failed to delete webhook'),
   })
 
   const testMutation = useMutation({
@@ -110,7 +112,10 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
           timestamp: new Date().toISOString(),
         },
       }))
+      if (result.success) toast.success('Webhook test succeeded')
+      else toast.error('Webhook test failed')
     },
+    onError: () => toast.error('Webhook test failed'),
   })
 
   // ─── Helpers ────────────────────────────────────────────────
@@ -150,6 +155,7 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
     if (newSecret) {
       navigator.clipboard.writeText(newSecret)
       setCopiedSecret(true)
+      toast.success('Copied to clipboard')
       setTimeout(() => setCopiedSecret(false), 2000)
     }
   }
@@ -163,7 +169,7 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
   return (
     <>
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2">
               <WebhookIcon className="h-5 w-5" />
@@ -182,121 +188,16 @@ export function WebhooksCard({ projectId }: WebhooksCardProps) {
           </Button>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
-          ) : webhooks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-lg">
-              <Globe className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="font-medium">No webhooks configured</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Add a webhook to receive auth event notifications
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {webhooks.map((webhook) => {
-                const events = formatEventList(webhook.events)
-                const lastTest = testResults[webhook.id]
-                return (
-                  <div
-                    key={webhook.id}
-                    className={`rounded-lg border p-4 transition-colors ${webhook.enabled ? 'bg-card' : 'bg-muted/30 opacity-75'
-                      }`}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                      {/* URL + Events */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <code className="text-sm font-mono truncate">{webhook.url}</code>
-                          {!webhook.enabled && (
-                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">
-                              Disabled
-                            </span>
-                          )}
-                        </div>
-                        {webhook.description && (
-                          <p className="text-sm text-muted-foreground mt-1">{webhook.description}</p>
-                        )}
-                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                          <span>Updated {new Date(webhook.updatedAt || webhook.createdAt).toLocaleString()}</span>
-                          {lastTest && (
-                            <span className={lastTest.success ? 'text-success' : 'text-destructive'}>
-                              Last test {lastTest.success ? 'passed' : 'failed'} at {new Date(lastTest.timestamp).toLocaleTimeString()}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {events.map(event => (
-                            <span
-                              key={event}
-                              className="px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary"
-                            >
-                              {event}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        <Switch
-                          checked={webhook.enabled}
-                          onCheckedChange={() => handleToggleEnabled(webhook)}
-                          disabled={updateMutation.isPending}
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => testMutation.mutate(webhook.id)}
-                          disabled={!webhook.enabled || testMutation.isPending}
-                          title="Send test ping"
-                        >
-                          {testMutation.isPending && testMutation.variables === webhook.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Zap className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openEdit(webhook)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => {
-                            if (confirm('Delete this webhook? This cannot be undone.')) {
-                              deleteMutation.mutate(webhook.id)
-                            }
-                          }}
-                          disabled={deleteMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Test result feedback */}
-                    {lastTest && (
-                      <div className={`mt-3 text-sm flex items-center gap-2 ${lastTest.success ? 'text-success' : 'text-destructive'
-                        }`}>
-                        {lastTest.success ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4" />
-                        )}
-                        {lastTest.message}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+          {isLoading ? <div className="flex justify-center py-8"><Loader2 className="size-5 animate-spin text-primary" /></div> : webhooks.length === 0 ? <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-12 text-center"><Globe className="mb-3 size-9 text-foreground-muted" /><p className="text-sm font-medium">No webhooks configured</p><p className="mt-1 text-sm text-foreground-secondary">Add a webhook to receive auth event notifications.</p></div> : (
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="border-b border-border bg-surface-raised text-xs text-foreground-muted"><tr><th className="px-4 py-3 font-medium">Endpoint</th><th className="px-4 py-3 font-medium">Events</th><th className="px-4 py-3 font-medium">Status</th><th className="px-4 py-3 font-medium">Last test</th><th className="px-4 py-3 font-medium">Actions</th></tr></thead>
+                <tbody>{webhooks.map((webhook) => {
+                  const events = formatEventList(webhook.events)
+                  const lastTest = testResults[webhook.id]
+                  return <tr key={webhook.id} onClick={() => openEdit(webhook)} className="cursor-pointer border-b border-border last:border-b-0 transition-colors duration-150 hover:bg-surface-raised"><td className="max-w-72 px-4 py-3"><code className="block truncate font-mono text-xs text-foreground">{webhook.url}</code>{webhook.description ? <p className="mt-1 truncate text-xs text-foreground-muted">{webhook.description}</p> : null}</td><td className="px-4 py-3 text-xs text-foreground-secondary">{events.length || 0} event{events.length === 1 ? '' : 's'}</td><td className="px-4 py-3"><span className={webhook.enabled ? 'inline-flex items-center gap-1.5 text-xs text-success' : 'inline-flex items-center gap-1.5 text-xs text-foreground-muted'}><span className={webhook.enabled ? 'size-1.5 rounded-full bg-success' : 'size-1.5 rounded-full bg-foreground-muted'} />{webhook.enabled ? 'Enabled' : 'Disabled'}</span></td><td className={lastTest?.success ? 'px-4 py-3 text-xs text-success' : lastTest ? 'px-4 py-3 text-xs text-danger' : 'px-4 py-3 text-xs text-foreground-muted'}>{lastTest ? `${lastTest.success ? 'Succeeded' : 'Failed'} · ${new Date(lastTest.timestamp).toLocaleTimeString()}` : 'Not tested'}</td><td className="px-4 py-3" onClick={(event) => event.stopPropagation()}><div className="flex items-center gap-1"><Switch checked={webhook.enabled} onCheckedChange={() => handleToggleEnabled(webhook)} disabled={updateMutation.isPending} /><Button variant="ghost" size="icon" className="size-7" onClick={() => testMutation.mutate(webhook.id)} disabled={!webhook.enabled || testMutation.isPending} aria-label="Test webhook">{testMutation.isPending && testMutation.variables === webhook.id ? <Loader2 className="size-3.5 animate-spin" /> : <Zap className="size-3.5" />}</Button><Button variant="ghost" size="icon" className="size-7 text-danger hover:text-danger" onClick={() => { if (confirm('Delete this webhook? This cannot be undone.')) deleteMutation.mutate(webhook.id) }} disabled={deleteMutation.isPending} aria-label="Delete webhook"><Trash2 className="size-3.5" /></Button></div></td></tr>
+                })}</tbody>
+              </table>
             </div>
           )}
         </CardContent>

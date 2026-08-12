@@ -1,7 +1,7 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Copy, ExternalLink } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Check, Copy, ExternalLink } from 'lucide-react'
-import { useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import type { OidcConfig } from '@/lib/api'
 
 interface OidcConfigCardProps {
@@ -9,31 +9,23 @@ interface OidcConfigCardProps {
   projectName: string
 }
 
+function copy(value: string) {
+  void navigator.clipboard.writeText(value).then(() => toast.success('Copied to clipboard'))
+}
+
 function CopyableField({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(value)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-sm text-muted-foreground w-40 shrink-0">{label}</span>
-      <code className="text-xs bg-muted px-2 py-1.5 rounded font-mono flex-1 truncate">
-        {value}
-      </code>
-      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleCopy}>
-        {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+    <div className="flex items-center gap-3 border-b border-border py-2.5 last:border-b-0">
+      <span className="w-28 shrink-0 text-xs font-medium text-foreground-secondary sm:w-36">{label}</span>
+      <code className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{value}</code>
+      <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={() => copy(value)} aria-label={`Copy ${label}`}>
+        <Copy className="size-3.5" />
       </Button>
     </div>
   )
 }
 
 export function OidcConfigCard({ config, projectName }: OidcConfigCardProps) {
-  const [snippetCopied, setSnippetCopied] = useState(false)
-
   const codeSnippet = `import { UserManager } from 'oidc-client-ts';
 
 const userManager = new UserManager({
@@ -43,25 +35,14 @@ const userManager = new UserManager({
   scope: 'openid profile email',
 });`
 
-  const handleCopySnippet = () => {
-    navigator.clipboard.writeText(codeSnippet)
-    setSnippetCopied(true)
-    setTimeout(() => setSnippetCopied(false), 2000)
-  }
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ExternalLink className="h-5 w-5" />
-          OIDC Configuration
-        </CardTitle>
-        <CardDescription>
-          Use these endpoints to integrate {projectName} with your application via OpenID Connect
-        </CardDescription>
+        <CardTitle className="flex items-center gap-2"><ExternalLink className="size-4" />OIDC configuration</CardTitle>
+        <CardDescription>Endpoints for integrating {projectName} with OpenID Connect.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-3">
+      <CardContent className="space-y-6">
+        <div className="rounded-lg border border-border bg-surface px-3">
           <CopyableField label="Client ID" value={config.clientId} />
           <CopyableField label="Issuer URL" value={config.issuerUrl} />
           <CopyableField label="Authorization" value={config.authorizationEndpoint} />
@@ -70,27 +51,12 @@ const userManager = new UserManager({
           <CopyableField label="UserInfo" value={config.userinfoEndpoint} />
         </div>
 
-        {/* Quick-start snippet */}
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Quick Start (oidc-client-ts)</span>
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleCopySnippet}>
-              {snippetCopied ? (
-                <>
-                  <Check className="h-3 w-3 text-success" />
-                  Copied
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3 w-3" />
-                  Copy
-                </>
-              )}
-            </Button>
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-foreground">Quick start · oidc-client-ts</p>
+            <Button variant="outline" size="sm" onClick={() => copy(codeSnippet)}><Copy className="size-3.5" />Copy</Button>
           </div>
-          <pre className="bg-muted p-4 rounded-lg text-xs font-mono overflow-x-auto">
-            <code>{codeSnippet}</code>
-          </pre>
+          <pre className="overflow-x-auto rounded-lg bg-[#111113] p-4 font-mono text-xs leading-5 text-slate-200"><code>{codeSnippet}</code></pre>
         </div>
       </CardContent>
     </Card>
