@@ -93,6 +93,25 @@ body {
   font-family: 'Inter Variable', system-ui, sans-serif;
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
+}
+
+#root {
+  min-width: 0;
+  overflow-x: clip;
+}
+
+/* Keep the API-key form anchored to the visual viewport on phones. */
+@media (max-width: 639px) {
+  .create-api-key-dialog {
+    left: 50vw !important;
+    top: 50dvh !important;
+    width: calc(100vw - 2rem) !important;
+    max-width: calc(100vw - 2rem) !important;
+    max-height: calc(100dvh - 2rem) !important;
+    translate: none !important;
+    transform: translate(-50%, -50%) !important;
+  }
 }
 
 html[data-theme='dark'] .arkil-card {
