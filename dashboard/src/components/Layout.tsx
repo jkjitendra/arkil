@@ -115,10 +115,8 @@ function SidebarContent({
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
       <div className={cn('flex h-14 shrink-0 items-center border-b border-border', collapsed ? 'justify-center px-2' : 'justify-between px-4')}>
-        <Link to="/" onClick={onNavigate} className="flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary-subtle text-primary">
-            <Hexagon className="size-4.5" strokeWidth={1.8} aria-hidden="true" />
-          </span>
+        <Link to="/" onClick={onNavigate} aria-label="Arkil home" className="flex min-w-0 items-center gap-2.5 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+          <img src="/arkil_logo_enhanced.png" alt="" className="size-9 shrink-0 object-contain" />
           {!collapsed ? <span className="text-base font-semibold tracking-tight text-foreground">Arkil</span> : null}
         </Link>
         {onCollapseToggle ? (
