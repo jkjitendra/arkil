@@ -1,12 +1,9 @@
-import { Hexagon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 export function ArkilBrand() {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="flex size-9 items-center justify-center rounded-lg border border-primary/25 bg-primary-subtle text-primary">
-        <Hexagon className="size-5" strokeWidth={1.8} aria-hidden="true" />
-      </span>
+      <img src="/arkil_logo_enhanced.png" alt="" className="size-9 shrink-0 object-contain" />
       <span className="text-lg font-semibold tracking-tight text-foreground">Arkil</span>
     </div>
   )
@@ -21,9 +18,7 @@ function IdentityVisualization() {
       <div className="auth-node auth-node-three absolute bottom-[24%] left-[38%] size-9" aria-hidden="true" />
       <div className="auth-node auth-node-four absolute bottom-[18%] right-[20%] size-5" aria-hidden="true" />
       <div className="relative z-10 flex items-center gap-2.5 text-sm font-medium text-slate-100">
-        <span className="flex size-8 items-center justify-center rounded-lg border border-indigo-300/20 bg-indigo-400/10 text-indigo-200">
-          <Hexagon className="size-4" strokeWidth={1.8} aria-hidden="true" />
-        </span>
+        <img src="/arkil_logo_enhanced.png" alt="" className="size-8 shrink-0 object-contain" />
         Arkil
       </div>
       <div className="relative z-10 max-w-sm">

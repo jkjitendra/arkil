@@ -36,6 +36,12 @@ Main application properties live in:
 
 Important settings:
 
+- Public URLs
+  - `ARKIL_AUTH_SERVER_URL` — externally reachable authorization-server URL
+  - `ARKIL_DASHBOARD_URL` — exact dashboard origin registered for OIDC callbacks
+  - `ARKIL_PLATFORM_CORS_ORIGINS` — optional comma-separated additional Arkil dashboard origins
+  - `ARKIL_DEVELOPMENT_CORS_ORIGINS` — optional comma-separated machine-specific dev origins
+
 - Email
   - `arkil.email.provider=console|smtp`
   - `arkil.email.from`
@@ -86,13 +92,32 @@ Default local services:
 - Backend: `http://localhost:8080`
 - Dashboard: `http://localhost:5173`
 
+The local dashboard reads `dashboard/.env.development`. Do not edit production
+settings to accommodate a local machine. Put LAN addresses or nonstandard ports
+in the ignored `dashboard/.env.development.local` and set the matching backend
+`ARKIL_DEVELOPMENT_CORS_ORIGINS` environment variable (or ignored
+`src/main/resources/application-local.properties`).
+
 ## Production notes
 
+- Start the backend with `SPRING_PROFILES_ACTIVE=prod`.
+- Set `ARKIL_AUTH_SERVER_URL` and `ARKIL_DASHBOARD_URL` to the HTTPS URLs users
+  actually visit. Production intentionally fails fast if either is missing.
+- Build the dashboard with matching `VITE_AUTH_SERVER_URL` and
+  `VITE_API_BASE_URL` values. These are build-time values, so redeploy the
+  dashboard after changing them.
+- The dashboard origin must exactly match `ARKIL_DASHBOARD_URL`: scheme, host,
+  and port all matter to OAuth redirect URI matching.
+- Keep `ARKIL_PLATFORM_CORS_ORIGINS` narrow; the configured dashboard origin is
+  allowed automatically, while localhost defaults are removed in the prod profile.
 - Set a real `ARKIL_ENCRYPTION_KEY`
 - Use `arkil.email.provider=smtp`
 - Set `arkil.ratelimit.backend=redis`
-- Configure `ARKIL_WEBAUTHN_RP_ID` and `ARKIL_WEBAUTHN_ORIGIN` to the auth domain you serve
-- Keep `application-prod.properties` aligned with your deployment environment variables
+- Configure `ARKIL_WEBAUTHN_RP_ID` to the auth domain you serve. The WebAuthn
+  origin defaults to `ARKIL_AUTH_SERVER_URL`, but can be overridden with
+  `ARKIL_WEBAUTHN_ORIGIN`.
+- Production rejects empty or localhost redirect URIs for production projects,
+  and it does not create demo data or the local `demo-client`.
 
 ## Verification
 

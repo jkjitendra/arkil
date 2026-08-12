@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Check, Copy, AlertTriangle } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface ApiKeyDisplayModalProps {
   open: boolean
@@ -31,6 +32,7 @@ export function ApiKeyDisplayModal({
 
   const copyToClipboard = async (text: string, type: 'secret' | 'publishable') => {
     await navigator.clipboard.writeText(text)
+    toast.success('Copied to clipboard')
     if (type === 'secret') {
       setCopiedSecret(true)
       setTimeout(() => setCopiedSecret(false), 2000)

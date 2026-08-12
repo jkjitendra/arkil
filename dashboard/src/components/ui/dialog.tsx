@@ -15,7 +15,7 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-surface p-6 text-foreground shadow-lg outline-none',
+        'fixed left-1/2 top-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-[calc(100%_-_2rem)] max-w-lg min-w-0 -translate-x-1/2 -translate-y-1/2 grid-cols-[minmax(0,1fr)] gap-4 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-surface p-4 text-foreground shadow-lg outline-none sm:p-6',
         'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
         className,
       )}
@@ -32,7 +32,7 @@ const DialogContent = React.forwardRef<
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn('flex flex-col gap-1.5 pr-7 text-left', className)} {...props} />
+  <div className={cn('min-w-0 flex flex-col gap-1.5 pr-7 text-left', className)} {...props} />
 )
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
@@ -51,7 +51,7 @@ const DialogDescription = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
 >(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description ref={ref} className={cn('text-sm leading-5 text-foreground-secondary', className)} {...props} />
+  <DialogPrimitive.Description ref={ref} className={cn('break-words text-sm leading-5 text-foreground-secondary', className)} {...props} />
 ))
 DialogDescription.displayName = DialogPrimitive.Description.displayName
 

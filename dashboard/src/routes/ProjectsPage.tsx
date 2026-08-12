@@ -1,10 +1,60 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Plus, Key, ExternalLink, AlertCircle, Loader2, RotateCcw, Trash2 } from 'lucide-react'
-import { useProjects, useDeletedProjects, useRestoreProject } from '@/hooks/useProjects'
+import { AlertCircle, Clock3, FolderOpen, Globe2, Loader2, Plus, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { CreateProjectModal } from '@/components/CreateProjectModal'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Input } from '@/components/ui/input'
+import { PageHeader } from '@/components/ui/page-header'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useDeletedProjects, useProjects, useRestoreProject } from '@/hooks/useProjects'
+import { toast } from 'sonner'
+
+function formatUpdatedAt(updatedAt: string) {
+  const date = new Date(updatedAt)
+  if (Number.isNaN(date.getTime())) return 'Updated recently'
+
+  return `Updated ${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date)}`
+}
+
+function EnvironmentBadge({ environment }: { environment: 'DEVELOPMENT' | 'PRODUCTION' }) {
+  const isProduction = environment === 'PRODUCTION'
+
+  return (
+    <span className={isProduction ? 'inline-flex items-center gap-1.5 text-[11px] font-medium text-success' : 'inline-flex items-center gap-1.5 text-[11px] font-medium text-warning'}>
+      <span className={isProduction ? 'size-1.5 rounded-full bg-success' : 'size-1.5 rounded-full bg-warning'} aria-hidden="true" />
+      {isProduction ? 'Production' : 'Development'}
+    </span>
+  )
+}
+
+function ProjectSkeletons() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 6 }, (_, index) => (
+        <Card key={index} className="p-4">
+          <div className="flex gap-3">
+            <Skeleton className="size-10 shrink-0" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-3/5" />
+              <Skeleton className="h-3 w-2/5" />
+            </div>
+          </div>
+          <div className="mt-5 space-y-2">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-4/5" />
+          </div>
+          <div className="mt-5 flex justify-between border-t border-border pt-3">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </Card>
+      ))}
+    </div>
+  )
+}
 
 export function ProjectsPage() {
   const navigate = useNavigate()
@@ -12,175 +62,125 @@ export function ProjectsPage() {
   const { data: deletedProjects } = useDeletedProjects()
   const restoreMutation = useRestoreProject()
   const [createModalOpen, setCreateModalOpen] = useState(false)
+  const [search, setSearch] = useState('')
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
+  const projectList = useMemo(() => projects || [], [projects])
+  const filteredProjects = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query) return projectList
+    return projectList.filter((project) => project.name.toLowerCase().includes(query) || project.slug.toLowerCase().includes(query))
+  }, [projectList, search])
+
+  const restoreProject = async (projectId: string) => {
+    try {
+      const restored = await restoreMutation.mutateAsync(projectId)
+      toast.success('Project restored')
+      navigate({ to: '/projects/$projectId', params: { projectId: restored.id } })
+    } catch (restoreError) {
+      toast.error('Failed to restore project')
+      console.error('Restore failed:', restoreError)
+    }
   }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-xl font-semibold">Failed to load projects</h2>
-        <p className="text-muted-foreground mt-2">{error.message}</p>
-      </div>
-    )
-  }
-
-  const projectList = projects || []
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your Arkil authentication projects
-          </p>
+    <div className="space-y-6">
+      <PageHeader
+        title="Projects"
+        description="Create and manage authentication environments."
+        actions={
+          <Button onClick={() => setCreateModalOpen(true)}>
+            <Plus className="size-4" />
+            New project
+          </Button>
+        }
+      />
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" aria-hidden="true" />
+        <Input value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" placeholder="Search projects by name or slug…" aria-label="Search projects" />
+      </div>
+
+      {isLoading ? <ProjectSkeletons /> : null}
+
+      {!isLoading && error ? (
+        <div className="flex min-h-80 flex-col items-center justify-center rounded-lg border border-danger/30 bg-danger/5 px-6 text-center">
+          <AlertCircle className="size-8 text-danger" aria-hidden="true" />
+          <h2 className="mt-3 text-base font-semibold text-foreground">Failed to load projects</h2>
+          <p className="mt-1 max-w-md text-sm text-foreground-secondary">{error.message}</p>
         </div>
-        <Button onClick={() => setCreateModalOpen(true)}>
-          <Plus className="h-4 w-4" />
-          New Project
-        </Button>
-      </div>
+      ) : null}
 
-      {/* Projects Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {projectList.map((project) => (
-          <Link key={project.id} to="/projects/$projectId" params={{ projectId: project.id }}>
-              <Card className="hover:border-primary/50 transition-colors cursor-pointer group h-full">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border bg-muted/40 overflow-hidden">
-                      {project.iconUrl ? (
-                        <img src={project.iconUrl} alt={`${project.name} icon`} className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="text-sm font-semibold">{project.name.charAt(0).toUpperCase()}</span>
-                      )}
-                    </div>
-                    <div>
-                    <CardTitle className="group-hover:text-primary transition-colors">
-                      {project.name}
-                    </CardTitle>
-                    <CardDescription className="font-mono text-xs mt-1">
-                      {project.slug}
-                    </CardDescription>
-                      {project.description && (
-                        <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
-                          {project.description}
-                        </p>
-                      )}
-                    </div>
+      {!isLoading && !error && filteredProjects.length > 0 ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filteredProjects.map((project) => (
+            <Link
+              key={project.id}
+              to="/projects/$projectId"
+              params={{ projectId: project.id }}
+              className="group block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <Card className="h-full p-4 transition-colors duration-150 hover:border-primary/30 hover:shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-raised text-sm font-semibold text-foreground-secondary">
+                    {project.iconUrl ? <img src={project.iconUrl} alt="" className="size-full object-cover" /> : project.name.charAt(0).toUpperCase()}
                   </div>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${project.environment === 'PRODUCTION'
-                      ? 'bg-success/20 text-success'
-                      : 'bg-warning/20 text-warning'
-                      }`}
-                  >
-                    {project.environment}
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Key className="h-4 w-4" />
-                    <span>{project.allowedOrigins?.length || 0} origins</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <h2 className="truncate text-sm font-semibold text-foreground transition-colors duration-150 group-hover:text-primary">{project.name}</h2>
+                      <EnvironmentBadge environment={project.environment} />
+                    </div>
+                    <p className="mt-1 truncate font-mono text-xs text-foreground-muted">{project.slug}</p>
                   </div>
-                  <ExternalLink className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
-      </div>
 
-      {/* Recently Deleted */}
-      {deletedProjects && deletedProjects.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Trash2 className="h-5 w-5 text-muted-foreground" />
-            <h2 className="text-lg font-semibold">Recently Deleted</h2>
-            <span className="text-sm text-muted-foreground">
-              ({deletedProjects.length} project{deletedProjects.length > 1 ? 's' : ''})
-            </span>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {deletedProjects.map((project) => (
-              <Card key={project.id} className="border-dashed opacity-60 hover:opacity-100 transition-opacity">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-base line-through">{project.name}</CardTitle>
-                      <CardDescription className="font-mono text-xs">
-                        {project.slug}
-                      </CardDescription>
-                    </div>
-                    <span className="text-xs text-warning bg-warning/10 px-2 py-1 rounded">
-                      {project.daysRemaining} day{project.daysRemaining !== 1 ? 's' : ''} left
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    disabled={restoreMutation.isPending}
-                    onClick={async () => {
-                      try {
-                        const restored = await restoreMutation.mutateAsync(project.id)
-                        // Navigate to the restored project
-                        navigate({ to: '/projects/$projectId', params: { projectId: restored.id } })
-                      } catch (error) {
-                        console.error('Restore failed:', error)
-                      }
-                    }}
-                  >
-                    {restoreMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RotateCcw className="h-4 w-4" />
-                    )}
-                    Restore Project
-                  </Button>
-                </CardContent>
+                <p className="mt-4 line-clamp-2 min-h-10 text-sm leading-5 text-foreground-secondary">
+                  {project.description || 'No project description provided.'}
+                </p>
+
+                <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3 text-xs text-foreground-muted">
+                  <span className="inline-flex items-center gap-1.5"><Globe2 className="size-3.5" aria-hidden="true" />{project.allowedOrigins?.length || 0} origins</span>
+                  <span className="truncate">{formatUpdatedAt(project.updatedAt)}</span>
+                </div>
               </Card>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+
+      {!isLoading && !error && filteredProjects.length === 0 ? (
+        <EmptyState
+          icon={FolderOpen}
+          title={search ? 'No matching projects' : 'No projects yet'}
+          description={search ? 'Try a different project name or slug.' : 'Create a project to configure authentication for an application.'}
+          action={!search ? <Button onClick={() => setCreateModalOpen(true)}><Plus className="size-4" />New project</Button> : undefined}
+        />
+      ) : null}
+
+      {deletedProjects && deletedProjects.length > 0 ? (
+        <section className="border-t border-border pt-6" aria-labelledby="recently-deleted-heading">
+          <div className="mb-3 flex items-center gap-2">
+            <Trash2 className="size-4 text-foreground-muted" aria-hidden="true" />
+            <h2 id="recently-deleted-heading" className="text-sm font-semibold text-foreground">Recently deleted</h2>
+            <span className="text-xs text-foreground-muted">{deletedProjects.length}</span>
+          </div>
+          <div className="overflow-hidden rounded-lg border border-border bg-surface">
+            {deletedProjects.map((project, index) => (
+              <div key={project.id} className={index > 0 ? 'flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center' : 'flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center'}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{project.name}</p>
+                  <p className="mt-0.5 truncate font-mono text-xs text-foreground-muted">{project.slug}</p>
+                </div>
+                <Badge variant="outline" className="w-fit gap-1.5 text-warning"><Clock3 className="size-3" aria-hidden="true" />{project.daysRemaining} day{project.daysRemaining === 1 ? '' : 's'} remaining</Badge>
+                <Button variant="outline" size="sm" disabled={restoreMutation.isPending} onClick={() => void restoreProject(project.id)}>
+                  {restoreMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <RotateCcw className="size-3.5" />}
+                  Restore
+                </Button>
+              </div>
             ))}
           </div>
-        </div>
-      )}
+        </section>
+      ) : null}
 
-      {/* Quick Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Projects</CardDescription>
-            <CardTitle className="text-4xl">{projectList.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Active API Keys</CardDescription>
-            <CardTitle className="text-4xl">—</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>This Month's Requests</CardDescription>
-            <CardTitle className="text-4xl">—</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-
-      {/* Create Project Modal */}
       <CreateProjectModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
     </div>
   )

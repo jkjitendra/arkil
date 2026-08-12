@@ -1,6 +1,7 @@
+import { API_BASE_URL } from './auth-config'
 import { useAuth } from './auth'
 
-const API_BASE = '/api/v1'
+const API_BASE = API_BASE_URL
 
 // Custom error for API failures with detailed error info
 export class ApiError extends Error {

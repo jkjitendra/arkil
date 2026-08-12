@@ -1,29 +1,37 @@
 import { useDeferredValue, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { AlertCircle, Check, Eye, MailCheck, MailX, Search, Shield, Trash2, UserX } from 'lucide-react'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { PageHeader } from '@/components/ui/page-header'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAdminUser, useAdminUsers, useBlockAdminUser, useDeleteAdminUser, useUnblockAdminUser, useUpdateAdminUser } from '@/hooks/useAdminUsers'
 import { useProfile } from '@/hooks/useProfile'
-import { AlertCircle, Check, Eye, Loader2, MailCheck, MailX, Search, Shield, Trash2, UserX } from 'lucide-react'
 
 const PAGE_SIZE = 12
 
 function formatDate(value?: string) {
-  if (!value) return '—'
-  return new Date(value).toLocaleString()
+  if (!value) return 'Never'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('') || 'U'
+}
+
+function UsersTableSkeleton() {
+  return <div className="overflow-hidden rounded-lg border border-border"><Table><TableHeader><TableRow><TableHead>User</TableHead><TableHead>Status</TableHead><TableHead>Email verified</TableHead><TableHead>Roles</TableHead><TableHead>Last active</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader><TableBody>{Array.from({ length: 5 }, (_, index) => <TableRow key={index}><TableCell><div className="flex items-center gap-3"><Skeleton className="size-8 rounded-full" /><div className="space-y-1"><Skeleton className="h-3 w-28" /><Skeleton className="h-3 w-40" /></div></div></TableCell><TableCell><Skeleton className="h-3 w-14" /></TableCell><TableCell><Skeleton className="h-3 w-16" /></TableCell><TableCell><Skeleton className="h-5 w-20" /></TableCell><TableCell><Skeleton className="h-3 w-20" /></TableCell><TableCell><Skeleton className="h-7 w-36" /></TableCell></TableRow>)}</TableBody></Table></div>
 }
 
 export function UsersPage() {
   const { data: profile } = useProfile()
-  const canManageUsers = !!profile?.roles.some((role) => role === 'TENANT_ADMIN' || role === 'SUPER_ADMIN' || role === 'PLATFORM_ADMIN')
+  const canManageUsers = !!profile?.roles.some((role) => ['TENANT_ADMIN', 'SUPER_ADMIN', 'PLATFORM_ADMIN'].includes(role))
   const [page, setPage] = useState(0)
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search.trim().toLowerCase())
@@ -38,352 +46,43 @@ export function UsersPage() {
   const deleteUser = useDeleteAdminUser()
 
   const users = usersQuery.data?.content || []
-  const filteredUsers = deferredSearch
-    ? users.filter((user) =>
-      [user.displayName, user.username, user.email, user.tenantName, user.tenantSlug]
-        .filter(Boolean)
-        .some((value) => value!.toLowerCase().includes(deferredSearch))
-    )
-    : users
-
+  const filteredUsers = deferredSearch ? users.filter((user) => [user.displayName, user.username, user.email, user.tenantName, user.tenantSlug].filter(Boolean).some((value) => value!.toLowerCase().includes(deferredSearch))) : users
   const selectedUser = userDetail.data
   const isCurrentUser = !!selectedUser && selectedUser.id === profile?.id
+  const isWorking = updateUser.isPending || blockUser.isPending || unblockUser.isPending || deleteUser.isPending
 
-  const handleToggleVerification = async (userId: string, emailVerified: boolean) => {
-    setActionError('')
-    try {
-      await updateUser.mutateAsync({
-        userId,
-        data: { emailVerified: !emailVerified },
-      })
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to update verification status')
-    }
-  }
+  const handleToggleVerification = async (userId: string, emailVerified: boolean) => { setActionError(''); try { await updateUser.mutateAsync({ userId, data: { emailVerified: !emailVerified } }) } catch (error) { setActionError(error instanceof Error ? error.message : 'Failed to update verification status') } }
+  const handleToggleBlocked = async (userId: string, enabled: boolean) => { setActionError(''); try { if (enabled) await blockUser.mutateAsync({ userId, reason: 'Blocked from dashboard' }); else await unblockUser.mutateAsync(userId) } catch (error) { setActionError(error instanceof Error ? error.message : 'Failed to update account status') } }
+  const handleDeleteUser = async (userId: string, email: string) => { setActionError(''); if (!window.confirm(`Disable ${email}? This preserves audit history and can be reversed later.`)) return; try { await deleteUser.mutateAsync(userId); setSelectedUserId(null) } catch (error) { setActionError(error instanceof Error ? error.message : 'Failed to disable user') } }
 
-  const handleToggleBlocked = async (userId: string, enabled: boolean) => {
-    setActionError('')
-    try {
-      if (enabled) {
-        await blockUser.mutateAsync({ userId, reason: 'Blocked from dashboard' })
-      } else {
-        await unblockUser.mutateAsync(userId)
-      }
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to update account status')
-    }
-  }
-
-  const handleDeleteUser = async (userId: string, email: string) => {
-    setActionError('')
-    if (!window.confirm(`Disable ${email}? This preserves audit history and can be reversed later.`)) {
-      return
-    }
-
-    try {
-      await deleteUser.mutateAsync(userId)
-      setSelectedUserId(null)
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to delete user')
-    }
-  }
-
-  const isWorking =
-    updateUser.isPending ||
-    blockUser.isPending ||
-    unblockUser.isPending ||
-    deleteUser.isPending
-
-  if (!profile) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (!canManageUsers) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <Shield className="mb-4 h-12 w-12 text-muted-foreground" />
-        <h2 className="text-xl font-semibold">Users access requires an admin role</h2>
-        <p className="mt-2 max-w-lg text-muted-foreground">
-          Sign in with a tenant admin or super admin account to manage end users.
-        </p>
-      </div>
-    )
-  }
-
-  if (usersQuery.isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (usersQuery.error) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-xl font-semibold">Failed to load users</h2>
-        <p className="text-muted-foreground mt-2">{usersQuery.error.message}</p>
-      </div>
-    )
-  }
+  if (!profile) return <UsersTableSkeleton />
+  if (!canManageUsers) return <EmptyState icon={Shield} title="Users access requires an admin role" description="Sign in with a tenant admin or super admin account to manage end users." />
+  if (usersQuery.isLoading) return <UsersTableSkeleton />
+  if (usersQuery.error) return <div className="flex min-h-80 flex-col items-center justify-center text-center"><AlertCircle className="size-9 text-danger" /><h2 className="mt-3 text-base font-semibold">Failed to load users</h2><p className="mt-1 text-sm text-foreground-secondary">{usersQuery.error.message}</p></div>
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Users</h1>
-          <p className="text-muted-foreground mt-1">
-            Review end users in your tenant, verify emails, and manage account access.
-          </p>
-        </div>
-        <div className="w-full max-w-md">
-          <label className="text-sm font-medium">Search users</label>
-          <div className="relative mt-1.5">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by name, username, email, or tenant"
-              className="pl-9"
-            />
-          </div>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader title="Users" description="Review end users in your tenant and manage account access." />
+      <div className="relative max-w-md"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-foreground-muted" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, or tenant…" className="pl-9" aria-label="Search users" /></div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>User Directory</CardTitle>
-          <CardDescription>
-            Showing {filteredUsers.length} of {usersQuery.data?.content.length || 0} users on this page
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {filteredUsers.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-              No users matched this page.
-            </div>
-          ) : (
-            filteredUsers.map((user) => {
-              const isSelf = user.id === profile?.id
-              return (
-              <div key={user.id} className="rounded-lg border p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-medium">{user.displayName || user.username}</p>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${user.enabled ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'}`}>
-                        {user.enabled ? 'Active' : 'Disabled'}
-                      </span>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${user.emailVerified ? 'bg-info/15 text-info' : 'bg-warning/15 text-warning'}`}>
-                        {user.emailVerified ? 'Verified' : 'Unverified'}
-                      </span>
-                    </div>
-                    <div className="space-y-1 text-sm text-muted-foreground">
-                      <p>{user.email}</p>
-                      <p>@{user.username} · {user.tenantName}</p>
-                      <p>{user.roles.join(', ') || 'No roles assigned'}</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Last login {formatDate(user.lastLoginAt)}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => setSelectedUserId(user.id)}>
-                      <Eye className="h-4 w-4" />
-                      View
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleToggleVerification(user.id, user.emailVerified)}
-                      disabled={isWorking || isSelf}
-                    >
-                      {user.emailVerified ? <MailX className="h-4 w-4" /> : <MailCheck className="h-4 w-4" />}
-                      {user.emailVerified ? 'Mark Unverified' : 'Verify Email'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleToggleBlocked(user.id, user.enabled)}
-                      disabled={isWorking || isSelf}
-                    >
-                      <UserX className="h-4 w-4" />
-                      {user.enabled ? 'Block' : 'Unblock'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )})
-          )}
-
-          <div className="flex items-center justify-between border-t pt-4">
-            <p className="text-sm text-muted-foreground">
-              Page {page + 1} of {Math.max(usersQuery.data?.totalPages || 1, 1)}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setPage((current) => Math.max(current - 1, 0))}
-                disabled={page === 0}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setPage((current) => current + 1)}
-                disabled={!!usersQuery.data?.last}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+        <CardHeader><CardTitle>User directory</CardTitle><p className="text-sm text-foreground-secondary">Showing {filteredUsers.length} of {users.length} users on this page.</p></CardHeader>
+        <CardContent>
+          {filteredUsers.length === 0 ? <EmptyState icon={Search} title="No users matched" description="Try a different name, email address, or tenant." className="min-h-56" /> : <div className="overflow-hidden rounded-lg border border-border"><Table><TableHeader><TableRow><TableHead>User</TableHead><TableHead>Status</TableHead><TableHead>Email verified</TableHead><TableHead>Roles</TableHead><TableHead>Last active</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader><TableBody>{filteredUsers.map((user) => {
+            const isSelf = user.id === profile.id
+            const displayName = user.displayName || user.username
+            return <TableRow key={user.id}><TableCell><div className="flex min-w-52 items-center gap-3"><Avatar className="size-8 border border-border"><AvatarFallback>{initials(displayName)}</AvatarFallback></Avatar><div className="min-w-0"><p className="truncate text-sm font-medium text-foreground">{displayName}</p><p className="truncate text-xs text-foreground-muted">{user.email}</p></div></div></TableCell><TableCell><span className={user.enabled ? 'inline-flex items-center gap-1.5 text-xs text-success' : 'inline-flex items-center gap-1.5 text-xs text-danger'}><span className={user.enabled ? 'size-1.5 rounded-full bg-success' : 'size-1.5 rounded-full bg-danger'} />{user.enabled ? 'Active' : 'Blocked'}</span></TableCell><TableCell>{user.emailVerified ? <span className="inline-flex items-center gap-1.5 text-xs text-success"><MailCheck className="size-3.5" />Verified</span> : <span className="inline-flex items-center gap-1.5 text-xs text-warning"><MailX className="size-3.5" />Unverified</span>}</TableCell><TableCell><div className="flex max-w-48 flex-wrap gap-1">{user.roles.length ? user.roles.map((role) => <Badge key={role} variant="outline">{role}</Badge>) : <span className="text-xs text-foreground-muted">No roles</span>}</div></TableCell><TableCell className="whitespace-nowrap text-xs text-foreground-secondary">{formatDate(user.lastLoginAt)}</TableCell><TableCell><div className="flex justify-end gap-1"><Button variant="ghost" size="sm" onClick={() => setSelectedUserId(user.id)}><Eye className="size-3.5" />View</Button><Button variant="ghost" size="sm" onClick={() => void handleToggleVerification(user.id, user.emailVerified)} disabled={isWorking || isSelf}>{user.emailVerified ? 'Unverify' : 'Verify'}</Button><Button variant="ghost" size="sm" className="text-danger hover:text-danger" onClick={() => void handleToggleBlocked(user.id, user.enabled)} disabled={isWorking || isSelf}>{user.enabled ? 'Block' : 'Unblock'}</Button></div></TableCell></TableRow>
+          })}</TableBody></Table></div>}
+          <div className="mt-4 flex items-center justify-between border-t border-border pt-4"><p className="text-sm text-foreground-secondary">Page {page + 1} of {Math.max(usersQuery.data?.totalPages || 1, 1)}</p><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(current - 1, 0))} disabled={page === 0}>Previous</Button><Button variant="outline" size="sm" onClick={() => setPage((current) => current + 1)} disabled={!!usersQuery.data?.last}>Next</Button></div></div>
         </CardContent>
       </Card>
 
-      <Dialog open={!!selectedUserId} onOpenChange={(open) => !open && setSelectedUserId(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>User Details</DialogTitle>
-            <DialogDescription>
-              Review identity state and apply admin actions for this account.
-            </DialogDescription>
-          </DialogHeader>
-
-          {userDetail.isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : selectedUser ? (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Identity</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Display name</span>
-                      <span>{selectedUser.displayName || '—'}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Username</span>
-                      <span>@{selectedUser.username}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Email</span>
-                      <span>{selectedUser.email}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">User ID</span>
-                      <span className="font-mono text-xs">{selectedUser.id}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Tenant</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Tenant</span>
-                      <span>{selectedUser.tenantName}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Slug</span>
-                      <span>{selectedUser.tenantSlug}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Tenant ID</span>
-                      <span className="font-mono text-xs">{selectedUser.tenantId}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Roles</span>
-                      <span>{selectedUser.roles.join(', ') || '—'}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Status</CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-2 text-sm md:grid-cols-2">
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Account state</span>
-                    <span>{selectedUser.enabled ? 'Active' : 'Disabled'}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Email verification</span>
-                    <span>{selectedUser.emailVerified ? 'Verified' : 'Unverified'}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Created</span>
-                    <span>{formatDate(selectedUser.createdAt)}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Updated</span>
-                    <span>{formatDate(selectedUser.updatedAt)}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Last login</span>
-                    <span>{formatDate(selectedUser.lastLoginAt)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {actionError && (
-                <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  {actionError}
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              Unable to load user details.
-            </div>
-          )}
-
-          <DialogFooter className="flex-wrap gap-2">
-            {selectedUser && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => handleToggleVerification(selectedUser.id, selectedUser.emailVerified)}
-                  disabled={isWorking}
-                >
-                  {selectedUser.emailVerified ? <MailX className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-                  {selectedUser.emailVerified ? 'Mark Unverified' : 'Verify Email'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleToggleBlocked(selectedUser.id, selectedUser.enabled)}
-                  disabled={isWorking || isCurrentUser}
-                >
-                  <Shield className="h-4 w-4" />
-                  {selectedUser.enabled ? 'Block User' : 'Unblock User'}
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => handleDeleteUser(selectedUser.id, selectedUser.email)}
-                  disabled={isWorking || isCurrentUser}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Disable User
-                </Button>
-              </>
-            )}
-            <Button variant="outline" onClick={() => setSelectedUserId(null)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Sheet open={!!selectedUserId} onOpenChange={(open) => !open && setSelectedUserId(null)}>
+        <SheetContent className="w-[min(100%,32rem)] overflow-y-auto">
+          <SheetHeader><SheetTitle>User details</SheetTitle><SheetDescription>Review identity state and apply admin actions for this account.</SheetDescription></SheetHeader>
+          {userDetail.isLoading ? <div className="space-y-3 py-6"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /><Skeleton className="h-20 w-full" /></div> : selectedUser ? <div className="mt-2 space-y-4"><Card><CardHeader><CardTitle className="text-sm">Identity</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><div><p className="text-xs text-foreground-muted">Display name</p><p className="mt-1">{selectedUser.displayName || '—'}</p></div><div><p className="text-xs text-foreground-muted">Email</p><p className="mt-1 break-all">{selectedUser.email}</p></div><div><p className="text-xs text-foreground-muted">User ID</p><p className="mt-1 break-all font-mono text-xs">{selectedUser.id}</p></div></CardContent></Card><Card><CardHeader><CardTitle className="text-sm">Tenant</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><div><p className="text-xs text-foreground-muted">Tenant</p><p className="mt-1">{selectedUser.tenantName}</p></div><div><p className="text-xs text-foreground-muted">Tenant slug</p><p className="mt-1 font-mono text-xs">{selectedUser.tenantSlug}</p></div><div><p className="text-xs text-foreground-muted">Roles</p><div className="mt-1 flex flex-wrap gap-1">{selectedUser.roles.map((role) => <Badge key={role} variant="outline">{role}</Badge>)}</div></div></CardContent></Card><Card><CardHeader><CardTitle className="text-sm">Status</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-foreground-muted">Account</p><p className="mt-1">{selectedUser.enabled ? 'Active' : 'Blocked'}</p></div><div><p className="text-xs text-foreground-muted">Email</p><p className="mt-1">{selectedUser.emailVerified ? 'Verified' : 'Unverified'}</p></div><div><p className="text-xs text-foreground-muted">Created</p><p className="mt-1">{formatDate(selectedUser.createdAt)}</p></div><div><p className="text-xs text-foreground-muted">Last active</p><p className="mt-1">{formatDate(selectedUser.lastLoginAt)}</p></div></CardContent></Card>{actionError ? <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{actionError}</p> : null}<div className="flex flex-col gap-2 border-t border-border pt-4"><Button variant="outline" onClick={() => void handleToggleVerification(selectedUser.id, selectedUser.emailVerified)} disabled={isWorking}>{selectedUser.emailVerified ? <MailX className="size-4" /> : <Check className="size-4" />}{selectedUser.emailVerified ? 'Mark unverified' : 'Verify email'}</Button><Button variant="outline" onClick={() => void handleToggleBlocked(selectedUser.id, selectedUser.enabled)} disabled={isWorking || isCurrentUser}><UserX className="size-4" />{selectedUser.enabled ? 'Block user' : 'Unblock user'}</Button><Button variant="destructive" onClick={() => void handleDeleteUser(selectedUser.id, selectedUser.email)} disabled={isWorking || isCurrentUser}><Trash2 className="size-4" />Disable user</Button></div></div> : <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">Unable to load user details.</p>}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

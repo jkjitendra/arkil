@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import { Loader2 } from 'lucide-react'
 import { useCreateProject } from '@/hooks/useProjects'
 import { ApiKeyDisplayModal } from './ApiKeyDisplayModal'
 import { ApiError } from '@/lib/api'
+import { toast } from 'sonner'
 
 interface CreateProjectModalProps {
   open: boolean
@@ -78,6 +80,7 @@ export function CreateProjectModal({ open, onOpenChange }: CreateProjectModalPro
       setEnvironment('DEVELOPMENT')
       setErrors({})
       onOpenChange(false)
+      toast.success('Project created')
 
       // If a secret key was returned, show the key modal BEFORE navigating
       if (result.secretKey) {
@@ -93,6 +96,7 @@ export function CreateProjectModal({ open, onOpenChange }: CreateProjectModalPro
         navigate({ to: '/projects/$projectId', params: { projectId: result.project.id } })
       }
     } catch (error) {
+      toast.error('Failed to create project')
       if (error instanceof ApiError) {
         const validationErrors = error.getValidationErrors()
         if (validationErrors.length > 0) {
@@ -168,14 +172,16 @@ export function CreateProjectModal({ open, onOpenChange }: CreateProjectModalPro
 
             <div>
               <label className="text-sm font-medium">Environment</label>
-              <select
+              <Select
                 value={environment}
-                onChange={(e) => setEnvironment(e.target.value as 'DEVELOPMENT' | 'PRODUCTION')}
-                className="mt-1.5 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                onValueChange={(value) => setEnvironment(value as 'DEVELOPMENT' | 'PRODUCTION')}
               >
-                <option value="DEVELOPMENT">Development</option>
-                <option value="PRODUCTION">Production</option>
-              </select>
+                <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DEVELOPMENT">Development</SelectItem>
+                  <SelectItem value="PRODUCTION">Production</SelectItem>
+                </SelectContent>
+              </Select>
               <p className="mt-1 text-xs text-muted-foreground">
                 Production projects require `https://` origins and redirect URIs.
               </p>
