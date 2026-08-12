@@ -4,6 +4,7 @@ import com.arkil.audit.ActorType;
 import com.arkil.audit.AuditEventType;
 import com.arkil.audit.AuditService;
 import com.arkil.audit.ProjectWebhookEventService;
+import com.arkil.config.ArkilUrlProperties;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
 import com.arkil.credential.totp.TotpService;
@@ -61,6 +62,7 @@ public class SessionController {
     private final AuditService auditService;
     private final ProjectWebhookEventService projectWebhookEventService;
     private final JwtEncoder jwtEncoder;
+    private final ArkilUrlProperties urlProperties;
 
     @Value("${arkil.session.cookie.same-site:None}")
     private String cookieSameSite;
@@ -84,7 +86,8 @@ public class SessionController {
                              TotpService totpService,
                              AuditService auditService,
                              ProjectWebhookEventService projectWebhookEventService,
-                             JWKSource<SecurityContext> jwkSource) {
+                             JWKSource<SecurityContext> jwkSource,
+                             ArkilUrlProperties urlProperties) {
         this.refreshTokenService = refreshTokenService;
         this.userRepository = userRepository;
         this.passwordCredentialRepository = passwordCredentialRepository;
@@ -94,6 +97,7 @@ public class SessionController {
         this.auditService = auditService;
         this.projectWebhookEventService = projectWebhookEventService;
         this.jwtEncoder = new NimbusJwtEncoder(jwkSource);
+        this.urlProperties = urlProperties;
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -342,7 +346,7 @@ public class SessionController {
                 .collect(Collectors.toSet());
 
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .issuer("http://localhost:8080")
+                .issuer(urlProperties.authServer())
                 .subject(user.getId().toString())
                 .audience(java.util.List.of(clientId))
                 .issuedAt(now)

@@ -24,7 +24,7 @@ public class EmailService {
     @Value("${arkil.email.from:noreply@arkil.io}")
     private String fromAddress;
 
-    @Value("${arkil.email.base-url:http://localhost:8080}")
+    @Value("${arkil.email.base-url}")
     private String baseUrl;
 
     /**
