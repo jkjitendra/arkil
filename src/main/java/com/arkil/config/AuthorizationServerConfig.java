@@ -1,7 +1,9 @@
 package com.arkil.config;
 
+import com.arkil.auth.DashboardStaleLogoutAuthenticationProvider;
 import com.arkil.security.ProjectCorsConfigurationSource;
 import com.nimbusds.jose.jwk.JWKSet;
+import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
@@ -9,14 +11,20 @@ import com.nimbusds.jose.proc.SecurityContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
+import org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
@@ -37,11 +45,17 @@ public class AuthorizationServerConfig {
 
     private final ProjectCorsConfigurationSource corsConfigurationSource;
     private final ArkilUrlProperties urlProperties;
+    private final Environment environment;
+
+    @Value("${arkil.jwt.jwk-set-json:}")
+    private String configuredJwkSetJson;
 
     public AuthorizationServerConfig(ProjectCorsConfigurationSource corsConfigurationSource,
-                                    ArkilUrlProperties urlProperties) {
+                                    ArkilUrlProperties urlProperties,
+                                    Environment environment) {
         this.corsConfigurationSource = corsConfigurationSource;
         this.urlProperties = urlProperties;
+        this.environment = environment;
     }
 
     /**
@@ -50,14 +64,20 @@ public class AuthorizationServerConfig {
      */
     @Bean
     @Order(1)
-    public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain authorizationServerSecurityFilterChain(
+            HttpSecurity http,
+            JwtDecoder jwtDecoder,
+            RegisteredClientRepository registeredClientRepository,
+            OAuth2AuthorizationService authorizationService) throws Exception {
         // Create and configure the OAuth2 Authorization Server configurer
         OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
                 new OAuth2AuthorizationServerConfigurer();
 
         // Enable OIDC with logout support
         authorizationServerConfigurer.oidc(oidc -> oidc
-                .logoutEndpoint(Customizer.withDefaults())
+                .logoutEndpoint(logout -> logout.authenticationProviders(providers -> providers.add(0,
+                        new DashboardStaleLogoutAuthenticationProvider(jwtDecoder,
+                                registeredClientRepository, authorizationService))))
         );
 
         http
@@ -85,16 +105,53 @@ public class AuthorizationServerConfig {
      * JWT decoder for resource server functionality.
      */
     @Bean
-    public JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
-        return NimbusJwtDecoder.withJwkSetUri(urlProperties.authServer() + "/oauth2/jwks").build();
+    public JwtDecoder jwtDecoder() {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(urlProperties.authServer() + "/oauth2/jwks").build();
+        decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(urlProperties.authServer()));
+        return decoder;
+    }
+
+    @Bean
+    public JwtEncoder jwtEncoder(JWKSource<SecurityContext> jwkSource) {
+        NimbusJwtEncoder encoder = new NimbusJwtEncoder(jwkSource);
+        // The JWK endpoint also publishes previous public keys for validation.
+        // Only the one private key may be selected for new signatures.
+        encoder.setJwkSelector(keys -> keys.stream()
+                .filter(JWK::isPrivate)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("No active JWT signing key")));
+        return encoder;
     }
 
     /**
      * JWK source for signing tokens.
-     * In production, load keys from secure storage (Vault, HSM, etc.)
+     * Production instances share a durable JWK set supplied as a secret. Keep
+     * old public keys in the set during rotation until issued tokens expire.
      */
     @Bean
     public JWKSource<SecurityContext> jwkSource() {
+        if (configuredJwkSetJson != null && !configuredJwkSetJson.isBlank()) {
+            try {
+                JWKSet configured = JWKSet.parse(configuredJwkSetJson);
+                long signingKeys = configured.getKeys().stream()
+                        .filter(JWK::isPrivate)
+                        .filter(key -> key instanceof RSAKey && key.getKeyID() != null
+                                && !key.getKeyID().isBlank())
+                        .count();
+                if (signingKeys != 1 || configured.getKeys().stream()
+                        .anyMatch(key -> !(key instanceof RSAKey) || key.getKeyID() == null
+                                || key.getKeyID().isBlank())) {
+                    throw new IllegalStateException("JWT JWK set must contain exactly one private RSA signing key and named RSA public keys");
+                }
+                return new ImmutableJWKSet<>(configured);
+            } catch (java.text.ParseException invalidJson) {
+                throw new IllegalStateException("Invalid arkil.jwt.jwk-set-json", invalidJson);
+            }
+        }
+        if (environment.matchesProfiles("prod", "production")) {
+            throw new IllegalStateException("ARKIL_JWT_JWK_SET_JSON is required in production");
+        }
+
         KeyPair keyPair = generateRsaKey();
         RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
         RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
