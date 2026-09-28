@@ -7,6 +7,8 @@ import com.arkil.client.AuthModule;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
 import com.arkil.credential.totp.TotpService;
+import com.arkil.project.Project;
+import com.arkil.project.ProjectRepository;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -45,6 +47,7 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
     private final PasswordEncoder passwordEncoder;
     private final TotpService totpService;
     private final ClientContextResolver clientContextResolver;
+    private final ProjectRepository projectRepository;
 
     @Override
     public Authentication authenticate(Authentication authentication) throws AuthenticationException {
@@ -75,10 +78,7 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
         // Authenticate the user
         String clientId = context != null ? context.getClientId() : "auth-server";
         try {
-            // Look up by email first, then by username
-            ArkilUser user = userRepository.findByEmail(username)
-                    .or(() -> userRepository.findByUsername(username))
-                    .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
+            ArkilUser user = resolveUser(username, context, request);
 
             if (!user.getEnabled()) {
                 throw new DisabledException("User account is disabled");
@@ -133,6 +133,37 @@ public class PolicyAwareAuthenticationProvider implements AuthenticationProvider
             }
             throw e;
         }
+    }
+
+    private ArkilUser resolveUser(String identifier, ClientContext context, HttpServletRequest request) {
+        if (context != null && context.isResolved()) {
+            String clientId = context.getClientId();
+            if (clientId == null || !clientId.startsWith("proj_")) {
+                throw new BadCredentialsException("Invalid application context");
+            }
+            Project project = projectRepository.findBySlug(clientId.substring("proj_".length()))
+                    .filter(p -> p.isActive() && p.getDeletedAt() == null && p.getTenantId() != null)
+                    .orElseThrow(() -> new BadCredentialsException("Invalid application context"));
+            return userRepository.findByTenantIdAndEmail(project.getTenantId(), identifier)
+                    .or(() -> userRepository.findByTenantIdAndUsername(project.getTenantId(), identifier))
+                    .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
+        }
+
+        String requestedClient = request == null ? null : request.getParameter("client_id");
+        if (requestedClient != null && !requestedClient.isBlank()
+                && !"arkil-dashboard".equals(requestedClient)) {
+            throw new BadCredentialsException("Invalid application context");
+        }
+
+        // A context-free hosted login is for the developer dashboard only.
+        // End users with the same email in other tenants cannot be selected.
+        return java.util.stream.Stream.concat(
+                        userRepository.findAllByEmail(identifier).stream(),
+                        userRepository.findAllByUsername(identifier).stream())
+                .filter(user -> user.getRoles().stream()
+                        .anyMatch(role -> "TENANT_ADMIN".equals(role.getName())))
+                .findFirst()
+                .orElseThrow(() -> new BadCredentialsException("Invalid username or password"));
     }
 
     @Override
