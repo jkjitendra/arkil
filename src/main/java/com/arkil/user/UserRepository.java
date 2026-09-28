@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 @Repository
@@ -23,11 +24,13 @@ public interface UserRepository extends JpaRepository<ArkilUser, UUID> {
      * Find user by email (global lookup for password reset, etc.)
      */
     Optional<ArkilUser> findByEmail(String email);
+    List<ArkilUser> findAllByEmail(String email);
 
     /**
      * Find user by username (global lookup for login).
      */
     Optional<ArkilUser> findByUsername(String username);
+    List<ArkilUser> findAllByUsername(String username);
 
     /**
      * Check if email is already in use (global, for developer registration).

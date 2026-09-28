@@ -5,15 +5,18 @@ import com.arkil.audit.AuditEventType;
 import com.arkil.audit.AuditService;
 import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.config.ArkilUrlProperties;
+import com.arkil.client.AuthModule;
+import com.arkil.client.ClientAuthPolicy;
+import com.arkil.client.ClientAuthPolicyRepository;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
 import com.arkil.credential.totp.TotpService;
 import com.arkil.email.EmailToken;
 import com.arkil.email.EmailTokenService;
+import com.arkil.project.Project;
+import com.arkil.project.ProjectRepository;
 import com.arkil.user.ArkilUser;
 import com.arkil.user.UserRepository;
-import com.nimbusds.jose.jwk.source.JWKSource;
-import com.nimbusds.jose.proc.SecurityContext;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
@@ -29,6 +32,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClient;
+import org.springframework.security.oauth2.server.authorization.client.RegisteredClientRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -56,6 +61,9 @@ public class SessionController {
     private final RefreshTokenService refreshTokenService;
     private final UserRepository userRepository;
     private final PasswordCredentialRepository passwordCredentialRepository;
+    private final ProjectRepository projectRepository;
+    private final ClientAuthPolicyRepository policyRepository;
+    private final RegisteredClientRepository registeredClientRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailTokenService emailTokenService;
     private final TotpService totpService;
@@ -81,22 +89,28 @@ public class SessionController {
     public SessionController(RefreshTokenService refreshTokenService,
                              UserRepository userRepository,
                              PasswordCredentialRepository passwordCredentialRepository,
+                             ProjectRepository projectRepository,
+                             ClientAuthPolicyRepository policyRepository,
+                             RegisteredClientRepository registeredClientRepository,
                              PasswordEncoder passwordEncoder,
                              EmailTokenService emailTokenService,
                              TotpService totpService,
                              AuditService auditService,
                              ProjectWebhookEventService projectWebhookEventService,
-                             JWKSource<SecurityContext> jwkSource,
+                             JwtEncoder jwtEncoder,
                              ArkilUrlProperties urlProperties) {
         this.refreshTokenService = refreshTokenService;
         this.userRepository = userRepository;
         this.passwordCredentialRepository = passwordCredentialRepository;
+        this.projectRepository = projectRepository;
+        this.policyRepository = policyRepository;
+        this.registeredClientRepository = registeredClientRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailTokenService = emailTokenService;
         this.totpService = totpService;
         this.auditService = auditService;
         this.projectWebhookEventService = projectWebhookEventService;
-        this.jwtEncoder = new NimbusJwtEncoder(jwkSource);
+        this.jwtEncoder = jwtEncoder;
         this.urlProperties = urlProperties;
     }
 
@@ -113,8 +127,23 @@ public class SessionController {
 
         log.info("Session creation request for identifier: {}", request.getIdentifier());
 
-        // 1. Look up user by identifier (email or username)
-        ArkilUser user = resolveUser(request.getIdentifier());
+        SessionClient client = resolveClient(request.getClientId());
+        if (client == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "invalid_client", "message", "Unknown or inactive application"));
+        }
+
+        AuthModule method = request.getMagicLinkToken() != null ? AuthModule.MAGIC_LINK : AuthModule.EMAIL_PASSWORD;
+        if (request.getMagicLinkToken() != null || request.getPassword() != null) {
+            if (!client.isMethodEnabled(method)) {
+                return ResponseEntity.status(403).body(Map.of(
+                        "error", "auth_method_disabled", "message", "Authentication method is disabled"));
+            }
+        }
+
+        // Resolve within the selected project's tenant; dashboard sessions
+        // are limited to tenant admins and never use an arbitrary audience.
+        ArkilUser user = resolveUser(request.getIdentifier(), client);
         if (user == null) {
             auditService.logFailure(AuditEventType.AUTH_LOGIN_FAILURE, request.getIdentifier(),
                     ActorType.USER, null, "User not found", httpRequest);
@@ -196,7 +225,7 @@ public class SessionController {
         }
 
         // 4. Generate tokens
-        String clientId = request.getClientId() != null ? request.getClientId() : "default";
+        String clientId = client.clientId();
         RefreshTokenService.TokenPair tokenPair = refreshTokenService.issueRefreshToken(
                 user.getId(), clientId,
                 httpRequest.getHeader("User-Agent"),
@@ -260,6 +289,22 @@ public class SessionController {
         }
 
         log.debug("Refresh token request received");
+
+        // Validate the original project and current tenant membership before
+        // rotating a token or issuing a new access token.
+        Optional<RefreshToken> existing = refreshTokenService.validateToken(refreshToken);
+        if (existing.isEmpty()) {
+            clearRefreshTokenCookie(response);
+            return ResponseEntity.status(401).body(Map.of("error", "invalid_token"));
+        }
+        SessionClient client = resolveClient(existing.get().getClientId());
+        ArkilUser currentUser = userRepository.findById(existing.get().getUserId()).orElse(null);
+        if (client == null || currentUser == null || !currentUser.getEnabled()
+                || !client.allows(currentUser)) {
+            refreshTokenService.revokeToken(refreshToken);
+            clearRefreshTokenCookie(response);
+            return ResponseEntity.status(401).body(Map.of("error", "invalid_token"));
+        }
 
         // Rotate token using RefreshTokenService
         Optional<RefreshTokenService.TokenPair> rotatedOpt = refreshTokenService.rotateToken(refreshToken);
@@ -365,13 +410,55 @@ public class SessionController {
     // Helper Methods
     // ─────────────────────────────────────────────────────────────────
 
-    private ArkilUser resolveUser(String identifier) {
-        // Try email first, then username
-        Optional<ArkilUser> userOpt = userRepository.findByEmail(identifier);
-        if (userOpt.isPresent()) {
-            return userOpt.get();
+    private ArkilUser resolveUser(String identifier, SessionClient client) {
+        if (client.tenantId() != null) {
+            return userRepository.findByTenantIdAndEmail(client.tenantId(), identifier)
+                    .or(() -> userRepository.findByTenantIdAndUsername(client.tenantId(), identifier))
+                    .orElse(null);
         }
-        return userRepository.findByUsername(identifier).orElse(null);
+        return java.util.stream.Stream.concat(
+                        userRepository.findAllByEmail(identifier).stream(),
+                        userRepository.findAllByUsername(identifier).stream())
+                .filter(client::allows)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private SessionClient resolveClient(String requestedClientId) {
+        if (requestedClientId == null || requestedClientId.isBlank()
+                || "arkil-dashboard".equals(requestedClientId)) {
+            return new SessionClient("arkil-dashboard", null, null);
+        }
+        if (!requestedClientId.startsWith("proj_")) {
+            return null;
+        }
+        String slug = requestedClientId.substring("proj_".length());
+        Project project = projectRepository.findBySlug(slug).orElse(null);
+        if (project == null || !project.isActive() || project.getDeletedAt() != null
+                || project.getTenantId() == null || project.getRegisteredClientId() == null) {
+            return null;
+        }
+        ClientAuthPolicy policy = policyRepository.findByClientId(requestedClientId).orElse(null);
+        RegisteredClient registeredClient = registeredClientRepository.findByClientId(requestedClientId);
+        if (policy == null || registeredClient == null
+                || !registeredClient.getId().equals(project.getRegisteredClientId())
+                || !registeredClient.getId().equals(policy.getRegisteredClientInternalId())) {
+            return null;
+        }
+        return new SessionClient(requestedClientId, project.getTenantId(), policy);
+    }
+
+    private record SessionClient(String clientId, UUID tenantId, ClientAuthPolicy policy) {
+        boolean isMethodEnabled(AuthModule module) {
+            return policy == null ? module == AuthModule.EMAIL_PASSWORD : policy.getEnabledModules().contains(module);
+        }
+
+        boolean allows(ArkilUser user) {
+            if (tenantId != null) {
+                return user.getTenant() != null && tenantId.equals(user.getTenant().getId());
+            }
+            return user.getRoles().stream().anyMatch(role -> "TENANT_ADMIN".equals(role.getName()));
+        }
     }
 
     private String extractClientIp(HttpServletRequest request) {
