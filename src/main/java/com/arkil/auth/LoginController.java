@@ -3,6 +3,7 @@ package com.arkil.auth;
 import com.arkil.audit.ActorType;
 import com.arkil.audit.ProjectWebhookEventService;
 import com.arkil.client.AuthModule;
+import com.arkil.config.ArkilUrlProperties;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
 import com.arkil.email.EmailToken;
@@ -33,7 +34,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
@@ -62,6 +62,7 @@ public class LoginController {
     private final ProjectWebhookEventService projectWebhookEventService;
     private final ProjectRepository projectRepository;
     private final ProjectOAuthProviderRepository providerRepository;
+    private final ArkilUrlProperties urlProperties;
 
     // ─────────────────────────────────────────────────────────────────
     // Login
@@ -325,7 +326,7 @@ public class LoginController {
             return "redirect:/login?error=oauth2";
         }
 
-        String normalizedReturnTo = normalizeReturnTo(returnTo, request);
+        String normalizedReturnTo = normalizeReturnTo(returnTo);
         if (normalizedReturnTo == null) {
             return "redirect:/login?error=oauth2";
         }
@@ -426,31 +427,34 @@ public class LoginController {
         return "/login".equals(redirectTo) || "/auth/magic-link".equals(redirectTo);
     }
 
-    private String normalizeReturnTo(String returnTo, HttpServletRequest request) {
+    private String normalizeReturnTo(String returnTo) {
         if (!StringUtils.hasText(returnTo)) {
             return null;
         }
 
         try {
             URI uri = URI.create(returnTo);
-            String path = uri.getPath();
-            if (!"/oauth2/authorize".equals(path)) {
+            if (uri.isOpaque() || uri.getRawFragment() != null
+                    || !"/oauth2/authorize".equals(uri.getRawPath())) {
                 return null;
             }
 
+            URI configuredOrigin = URI.create(urlProperties.authServer());
             if (uri.isAbsolute()) {
-                boolean sameOrigin = request.getScheme().equalsIgnoreCase(uri.getScheme())
-                        && request.getServerName().equalsIgnoreCase(uri.getHost())
-                        && normalizePort(request.getScheme(), request.getServerPort())
+                boolean sameOrigin = uri.getRawUserInfo() == null
+                        && configuredOrigin.getScheme().equalsIgnoreCase(uri.getScheme())
+                        && configuredOrigin.getHost().equalsIgnoreCase(uri.getHost())
+                        && normalizePort(configuredOrigin.getScheme(), configuredOrigin.getPort())
                         == normalizePort(uri.getScheme(), uri.getPort());
-                return sameOrigin ? uri.toString() : null;
+                if (!sameOrigin) {
+                    return null;
+                }
             }
 
-            return ServletUriComponentsBuilder.fromCurrentContextPath()
-                    .path(path)
-                    .query(uri.getQuery())
-                    .build()
-                    .toUriString();
+            // Build from the configured public issuer, never from a Host or
+            // Forwarded header supplied with this request.
+            return urlProperties.authServer() + "/oauth2/authorize"
+                    + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
         } catch (IllegalArgumentException ex) {
             return null;
         }
