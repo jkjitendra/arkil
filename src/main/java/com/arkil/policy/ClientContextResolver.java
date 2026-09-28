@@ -10,7 +10,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.security.web.savedrequest.SavedRequest;
 
+import java.net.URI;
 import java.util.Optional;
 
 /**
@@ -18,8 +20,9 @@ import java.util.Optional;
  * Resolution order:
  * 1. Query parameter: ?client_id=...
  * 2. Publishable key: ?pk=... or X-Publishable-Key header
- * 3. Session attribute (stored after first resolution)
- * 4. Host mapping (future: domain-to-client mapping)
+ * 3. Saved OAuth authorization request (after the auth server redirects to login)
+ * 4. Session attribute (stored after first resolution)
+ * 5. Host mapping (future: domain-to-client mapping)
  *
  * When resolved via pk_, the publishable key is used to look up the project,
  * then the project's registered client ID is used to find the auth policy.
@@ -56,7 +59,25 @@ public class ClientContextResolver {
             }
         }
 
-        // 3. Try session (for multi-step flows like OAuth)
+        // 3. The authorization-server filter saves the original request before
+        // redirecting an unauthenticated user to /login. Resolve that client so
+        // the hosted login and form authentication stay in the correct tenant.
+        if (clientId == null && request.getSession(false) != null) {
+            Object saved = request.getSession(false).getAttribute("SPRING_SECURITY_SAVED_REQUEST");
+            if (saved instanceof SavedRequest savedRequest) {
+                try {
+                    URI savedUri = URI.create(savedRequest.getRedirectUrl());
+                    String[] ids = savedRequest.getParameterValues(CLIENT_ID_PARAM);
+                    if ("/oauth2/authorize".equals(savedUri.getPath()) && ids != null && ids.length == 1) {
+                        clientId = ids[0];
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    // An invalid saved URL cannot establish client context.
+                }
+            }
+        }
+
+        // 4. Try session (for multi-step flows like OAuth)
         if (clientId == null && request.getSession(false) != null) {
             clientId = (String) request.getSession().getAttribute(SESSION_CLIENT_ID);
         }
