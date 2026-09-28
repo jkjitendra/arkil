@@ -16,7 +16,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
@@ -27,6 +31,8 @@ import org.springframework.security.web.authentication.AuthenticationFailureHand
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.util.UriComponentsBuilder;
+
+import java.util.UUID;
 
 /**
  * SecurityFilterChain #2: Application endpoints.
@@ -109,9 +115,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/public/**").permitAll()
                         // OAuth2 social login callback
                         .requestMatchers("/login/oauth2/code/**").permitAll()
-                        // Admin APIs require scope
-                        .requestMatchers("/api/v1/clients/**").hasAuthority("SCOPE_arkil:admin")
-                        .requestMatchers("/api/v1/admin/**").hasAuthority("SCOPE_arkil:admin")
+                        // Management APIs require both the dashboard scope and a tenant admin identity.
+                        .requestMatchers("/api/v1/projects/**", "/api/v1/clients/**", "/api/v1/admin/**")
+                                .access((authentication, context) -> new AuthorizationDecision(
+                                        isTenantAdmin(authentication.get())))
                         .requestMatchers("/oauth2/authorization/**").permitAll()
                         .anyRequest().authenticated()
                 )
@@ -168,7 +175,7 @@ public class SecurityConfig {
                         .ignoringRequestMatchers("/webauthn/**")
                 )
                 .headers(headers -> headers
-                        .frameOptions(frame -> frame.sameOrigin())
+//                        .frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin)
                         // Content Security Policy - DISABLED for dev (re-enable with proper config for production)
                         // .contentSecurityPolicy(csp -> csp
                         //         .policyDirectives("default-src 'self'; " +
@@ -188,20 +195,41 @@ public class SecurityConfig {
                         // Cache control for sensitive pages
                         .cacheControl(cache -> {})
                         // Permissions Policy
-                        .permissionsPolicy(permissions -> permissions
+                        .permissionsPolicyHeader(permissions -> permissions
                                 .policy("camera=(), microphone=(), geolocation=(), payment=()"))
                 )
                 // Policy-aware authentication provider
                 .authenticationProvider(policyAwareAuthenticationProvider)
                 // Resource server: accept JWT Bearer tokens for API endpoints
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {}))
-                // Filter chain order: ClientContext -> RateLimit -> PolicyEnforcement -> TenantContext -> Authentication
+                // Resolve the JWT before deriving tenant context from its claims.
                 .addFilterBefore(clientContextFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(policyEnforcementFilter, ClientContextFilter.class)
-                .addFilterAfter(tenantContextFilter, PolicyEnforcementFilter.class);
+                .addFilterAfter(tenantContextFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    private boolean isTenantAdmin(Authentication authentication) {
+        if (!(authentication instanceof JwtAuthenticationToken jwtAuthentication)) {
+            return false;
+        }
+        if (authentication.getAuthorities().stream()
+                .noneMatch(authority -> "SCOPE_arkil:admin".equals(authority.getAuthority()))) {
+            return false;
+        }
+        if (jwtAuthentication.getToken().getClaimAsStringList("roles") == null
+                || !jwtAuthentication.getToken().getClaimAsStringList("roles").contains("TENANT_ADMIN")) {
+            return false;
+        }
+        try {
+            UUID.fromString(jwtAuthentication.getToken().getClaimAsString("tenant_id"));
+            UUID.fromString(jwtAuthentication.getToken().getSubject());
+            return true;
+        } catch (IllegalArgumentException | NullPointerException invalidIdentity) {
+            return false;
+        }
     }
 
     private AuthenticationSuccessHandler formLoginSuccessHandler() {
