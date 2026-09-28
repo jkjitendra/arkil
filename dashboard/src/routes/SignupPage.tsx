@@ -40,7 +40,7 @@ export function SignupPage() {
       await registerDeveloper({
         email,
         password,
-        orgName: orgName.trim() || email.split('@')[0] + "'s Workspace",
+        orgName: orgName.trim() || 'My Workspace',
         displayName: displayName || undefined,
       })
       setIsSuccess(true)

@@ -359,7 +359,7 @@ export interface RegisterRequest {
   displayName?: string
 }
 
-export async function registerDeveloper(data: RegisterRequest): Promise<{ message: string; userId: string; email: string; orgName: string }> {
+export async function registerDeveloper(data: RegisterRequest): Promise<{ message: string; userId: string }> {
   const response = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

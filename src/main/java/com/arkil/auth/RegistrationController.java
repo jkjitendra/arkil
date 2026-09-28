@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -52,10 +53,12 @@ public class RegistrationController {
         }
 
         try {
-            // Default workspace name from email prefix if not provided
+            // Do not derive display text from an untrusted email local part.
             String orgName = request.getOrgName();
             if (orgName == null || orgName.isBlank()) {
-                orgName = request.getEmail().split("@")[0] + "'s Workspace";
+                orgName = "My Workspace";
+            } else {
+                orgName = orgName.trim();
             }
 
             ArkilUser user = registrationService.registerDeveloper(
@@ -67,9 +70,7 @@ public class RegistrationController {
 
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                     "message", "Account created successfully. Please log in.",
-                    "userId", user.getId().toString(),
-                    "email", user.getEmail(),
-                    "orgName", orgName
+                    "userId", user.getId().toString()
             ));
         } catch (RegistrationService.RegistrationException e) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
@@ -90,9 +91,11 @@ public class RegistrationController {
         private String password;
 
         @Size(max = 100, message = "Workspace name must be at most 100 characters")
+        @Pattern(regexp = "^[^<>\\p{Cntrl}]*$", message = "Workspace name contains unsupported characters")
         private String orgName;
 
         @Size(max = 100, message = "Display name must be at most 100 characters")
+        @Pattern(regexp = "^[^<>\\p{Cntrl}]*$", message = "Display name contains unsupported characters")
         private String displayName;
     }
 
