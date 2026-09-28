@@ -65,6 +65,8 @@ Important settings:
 - Project lifecycle
   - `arkil.project.deletion-retention-days`
   - `arkil.project.cleanup-cron`
+- Token signing
+  - `ARKIL_JWT_JWK_SET_JSON` — persistent RSA JWK set, required in production
 
 ## Local development
 
@@ -111,6 +113,16 @@ in the ignored `dashboard/.env.development.local` and set the matching backend
 - Keep `ARKIL_PLATFORM_CORS_ORIGINS` narrow; the configured dashboard origin is
   allowed automatically, while localhost defaults are removed in the prod profile.
 - Set a real `ARKIL_ENCRYPTION_KEY`
+- Set `ARKIL_JWT_JWK_SET_JSON` to a secret JWK set with exactly one named private
+  RSA key. All production instances must share it. For rotation, add a new
+  private key and retain the previous key as public only until all old access
+  tokens expire. Back up the signing secret; losing it invalidates outstanding
+  tokens. Development generates an ephemeral key if this value is absent.
+- Flyway applies `db/migration/V1__initial_schema.sql` on an empty database;
+  Hibernate validates the resulting schema. For an existing database created
+  with Hibernate, back it up, compare its schema with V1, and baseline Flyway
+  at version 1 only after confirming equivalence. Do not apply V1 over
+  existing tables or baseline an unreviewed schema.
 - Use `arkil.email.provider=smtp`
 - Set `arkil.ratelimit.backend=redis`
 - Configure `ARKIL_WEBAUTHN_RP_ID` to the auth domain you serve. The WebAuthn
@@ -118,6 +130,12 @@ in the ignored `dashboard/.env.development.local` and set the matching backend
   `ARKIL_WEBAUTHN_ORIGIN`.
 - Production rejects empty or localhost redirect URIs for production projects,
   and it does not create demo data or the local `demo-client`.
+
+## Planned developer billing
+
+The proposed [three-tier billing design](docs/developer-billing-plan.md) charges
+the developer or company for Arkil authentication capabilities. It does not
+process the developer application's end-user purchases.
 
 ## Verification
 
