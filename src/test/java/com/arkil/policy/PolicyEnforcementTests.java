@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * /webauthn/*, /totp/*, /auth/magic-link*.
  */
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class PolicyEnforcementTests {

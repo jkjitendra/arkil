@@ -5,6 +5,7 @@ import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
 import com.arkil.project.Project;
 import com.arkil.project.ProjectRepository;
+import com.arkil.project.RegisteredClientBridgeService;
 import com.arkil.tenant.Tenant;
 import com.arkil.tenant.TenantRepository;
 import com.arkil.user.ArkilUser;
@@ -40,6 +41,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @AutoConfigureMockMvc
 class WebhookEventWiringIntegrationTests {
 
@@ -47,6 +49,7 @@ class WebhookEventWiringIntegrationTests {
     @Autowired private ObjectMapper objectMapper;
     @Autowired private TenantRepository tenantRepository;
     @Autowired private ProjectRepository projectRepository;
+    @Autowired private RegisteredClientBridgeService registeredClientBridgeService;
     @Autowired private UserRepository userRepository;
     @Autowired private RoleRepository roleRepository;
     @Autowired private PasswordCredentialRepository passwordCredentialRepository;
@@ -75,16 +78,19 @@ class WebhookEventWiringIntegrationTests {
                         .build()));
 
         project = projectRepository.findBySlug("webhook-events-app")
-                .orElseGet(() -> projectRepository.save(Project.builder()
-                        .name("Webhook Events App")
-                        .slug("webhook-events-app")
-                        .ownerId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
-                        .tenantId(tenant.getId())
-                        .registeredClientId("webhook-events-internal")
-                        .environment(Project.Environment.DEVELOPMENT)
-                        .active(true)
-                        .createdAt(Instant.now())
-                        .build()));
+                .orElseGet(() -> {
+                    Project created = projectRepository.save(Project.builder()
+                            .name("Webhook Events App")
+                            .slug("webhook-events-app")
+                            .ownerId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+                            .tenantId(tenant.getId())
+                            .environment(Project.Environment.DEVELOPMENT)
+                            .active(true)
+                            .createdAt(Instant.now())
+                            .build());
+                    created.setRegisteredClientId(registeredClientBridgeService.createRegisteredClientForProject(created));
+                    return projectRepository.save(created);
+                });
 
         user = userRepository.findByTenantIdAndEmail(tenant.getId(), "events-user@example.com")
                 .orElseGet(() -> {
@@ -187,7 +193,8 @@ class WebhookEventWiringIntegrationTests {
                         .with(jwt().jwt(jwt -> jwt
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", tenant.getId().toString())
-                                .claim("scope", "arkil:admin")))
+                                .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("reason", "fraud review"))))
                 .andExpect(status().isOk());
@@ -196,14 +203,16 @@ class WebhookEventWiringIntegrationTests {
                         .with(jwt().jwt(jwt -> jwt
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", tenant.getId().toString())
-                                .claim("scope", "arkil:admin"))))
+                                .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN")))))
                 .andExpect(status().isOk());
 
         mockMvc.perform(delete("/api/v1/admin/users/{userId}", user.getId())
                         .with(jwt().jwt(jwt -> jwt
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", tenant.getId().toString())
-                                .claim("scope", "arkil:admin"))))
+                                .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN")))))
                 .andExpect(status().isOk());
 
         List<String> events = recordingWebhookDispatchService.awaitEvents(3);

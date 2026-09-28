@@ -23,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Uses mock JWT tokens for authentication.
  */
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ProjectApiIntegrationTests {
@@ -48,6 +49,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -81,6 +83,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -99,6 +102,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
@@ -116,6 +120,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Test Project"))
@@ -133,6 +138,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -158,6 +164,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
@@ -175,6 +182,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -197,6 +205,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -219,6 +228,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -248,6 +258,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.ofEntries(
@@ -275,6 +286,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -299,6 +311,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Project deleted"));
@@ -313,6 +326,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
@@ -330,6 +344,7 @@ class ProjectApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Updated Test Project"));
@@ -348,6 +363,19 @@ class ProjectApiIntegrationTests {
     }
 
     @Test
+    @Order(30)
+    @DisplayName("End-user token cannot call project management APIs even with dashboard scope")
+    void endUserCannotManageProjects() throws Exception {
+        mockMvc.perform(get("/api/v1/projects")
+                        .with(jwt().jwt(token -> token
+                                .subject("00000000-0000-0000-0000-000000000002")
+                                .claim("tenant_id", "00000000-0000-0000-0000-000000000001")
+                                .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("USER")))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @Order(31)
     @DisplayName("GET /api/v1/projects/{id} — wrong tenant returns not found")
     void getProjectWrongTenant() throws Exception {
@@ -358,6 +386,7 @@ class ProjectApiIntegrationTests {
                                 .subject("99999999-9999-9999-9999-999999999999")
                                 .claim("tenant_id", "99999999-9999-9999-9999-999999999999")
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().is4xxClientError());
     }

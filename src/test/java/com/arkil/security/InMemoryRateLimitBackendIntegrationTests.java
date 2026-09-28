@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 @SpringBootTest(properties = "arkil.ratelimit.backend=memory")
+@org.springframework.test.context.ActiveProfiles("test")
 class InMemoryRateLimitBackendIntegrationTests {
 
     @Autowired

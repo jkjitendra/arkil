@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
         "arkil.ratelimit.backend=redis",
         "management.health.redis.enabled=false"
 })
+@org.springframework.test.context.ActiveProfiles("test")
 class RedisRateLimitBackendIntegrationTests {
 
     @Autowired

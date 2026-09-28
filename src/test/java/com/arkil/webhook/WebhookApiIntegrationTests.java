@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Integration tests for Webhook CRUD API.
  */
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class WebhookApiIntegrationTests {
@@ -65,6 +66,7 @@ class WebhookApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", testTenantId)
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -96,6 +98,7 @@ class WebhookApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", testTenantId)
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
@@ -113,6 +116,7 @@ class WebhookApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", testTenantId)
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -136,6 +140,7 @@ class WebhookApiIntegrationTests {
                         .subject("00000000-0000-0000-0000-000000000001")
                         .claim("tenant_id", testTenantId)
                         .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                 ))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(Map.of("enabled", true))));
@@ -146,6 +151,7 @@ class WebhookApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", testTenantId)
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").isBoolean())
@@ -163,6 +169,7 @@ class WebhookApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", testTenantId)
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
@@ -180,6 +187,7 @@ class WebhookApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", testTenantId)
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of(
@@ -201,6 +209,7 @@ class WebhookApiIntegrationTests {
                                 .subject("00000000-0000-0000-0000-000000000001")
                                 .claim("tenant_id", testTenantId)
                                 .claim("scope", "arkil:admin")
+                                .claim("roles", java.util.List.of("TENANT_ADMIN"))
                         )))
                 .andExpect(status().isNoContent());
     }
