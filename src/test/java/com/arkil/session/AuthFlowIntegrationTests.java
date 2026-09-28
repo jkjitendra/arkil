@@ -4,9 +4,13 @@ import com.arkil.credential.totp.TotpCredentialRepository;
 import com.arkil.credential.totp.TotpService;
 import com.arkil.credential.password.PasswordCredential;
 import com.arkil.credential.password.PasswordCredentialRepository;
+import com.arkil.auth.AuthSessionAttributes;
 import com.arkil.email.EmailToken;
 import com.arkil.email.EmailTokenRepository;
 import com.arkil.security.SecretEncryptionService;
+import com.arkil.project.Project;
+import com.arkil.project.ProjectRepository;
+import com.arkil.project.RegisteredClientBridgeService;
 import com.arkil.tenant.Tenant;
 import com.arkil.tenant.TenantRepository;
 import com.arkil.user.ArkilUser;
@@ -22,8 +26,10 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.mock.web.MockHttpSession;
 
 import java.util.Map;
+import java.util.UUID;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -39,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * - Password reset flow
  */
 @SpringBootTest
+@org.springframework.test.context.ActiveProfiles("test")
 @AutoConfigureMockMvc
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class AuthFlowIntegrationTests {
@@ -54,6 +61,8 @@ class AuthFlowIntegrationTests {
     @Autowired private SecretEncryptionService secretEncryptionService;
     @Autowired private PasswordEncoder passwordEncoder;
     @Autowired private ObjectMapper objectMapper;
+    @Autowired private ProjectRepository projectRepository;
+    @Autowired private RegisteredClientBridgeService registeredClientBridgeService;
 
     private static final String TEST_EMAIL = "test-auth@example.com";
     private static final String TEST_PASSWORD = "SecurePass123!";
@@ -83,7 +92,8 @@ class AuthFlowIntegrationTests {
                         ))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.userId").exists())
-                .andExpect(jsonPath("$.email").value(TEST_EMAIL));
+                .andExpect(jsonPath("$.email").doesNotExist())
+                .andExpect(jsonPath("$.orgName").doesNotExist());
     }
 
     @Test
@@ -124,6 +134,67 @@ class AuthFlowIntegrationTests {
                                 "password", TEST_PASSWORD
                         ))))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @Order(5)
+    @DisplayName("Developer registration rejects markup in workspace names")
+    void registerRejectsMarkup() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", "xss-check@example.com",
+                                "password", TEST_PASSWORD,
+                                "orgName", "<script>alert(1)</script>"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"));
+    }
+
+    @Test
+    @Order(6)
+    @DisplayName("Social return URL rejects another origin despite forged Host header")
+    void socialReturnRejectsExternalOrigin() throws Exception {
+        mockMvc.perform(get("/auth/social/google")
+                        .header("Host", "evil.example")
+                        .param("return_to", "https://evil.example/oauth2/authorize?client_id=arkil-dashboard"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/login?error=oauth2"));
+    }
+
+    @Test
+    @Order(7)
+    @DisplayName("Social return URL uses configured issuer for relative authorization paths")
+    void socialReturnUsesConfiguredIssuer() throws Exception {
+        mockMvc.perform(get("/auth/social/google")
+                        .header("Host", "evil.example")
+                        .param("return_to", "/oauth2/authorize?client_id=arkil-dashboard"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(request().sessionAttribute(AuthSessionAttributes.SOCIAL_LOGIN_RETURN_TO,
+                        "http://localhost:8080/oauth2/authorize?client_id=arkil-dashboard"));
+    }
+
+    @Test
+    @Order(8)
+    @DisplayName("Hosted login resolves the project from a saved OAuth authorization request")
+    void oauthAuthorizationRedirectKeepsProjectContext() throws Exception {
+        ensureIsolatedProject();
+        MvcResult authorization = mockMvc.perform(get("/oauth2/authorize")
+                        .queryParam("response_type", "code")
+                        .queryParam("client_id", "proj_auth-flow-isolation")
+                        .queryParam("redirect_uri", "http://localhost:5173/callback")
+                        .queryParam("scope", "openid")
+                        .queryParam("state", "test-state")
+                        .queryParam("code_challenge", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+                        .queryParam("code_challenge_method", "S256"))
+                .andExpect(status().is3xxRedirection())
+                .andReturn();
+
+        mockMvc.perform(get("/login")
+                        .session((MockHttpSession) authorization.getRequest().getSession(false)))
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("clientContext",
+                        hasProperty("clientId", is("proj_auth-flow-isolation"))));
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -178,6 +249,54 @@ class AuthFlowIntegrationTests {
                         ))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("invalid_credentials"));
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("Direct session rejects a caller-supplied unknown client")
+    void createSessionUnknownClient() throws Exception {
+        mockMvc.perform(post("/api/v1/sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "identifier", TEST_EMAIL,
+                                "password", TEST_PASSWORD,
+                                "clientId", "proj_does-not-exist"
+                        ))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_client"));
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("Direct session cannot select a user from another tenant")
+    void createSessionRejectsCrossTenantUser() throws Exception {
+        ensureUserExists();
+        ensureIsolatedProject();
+        mockMvc.perform(post("/api/v1/sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "identifier", TEST_EMAIL,
+                                "password", TEST_PASSWORD,
+                                "clientId", "proj_auth-flow-isolation"
+                        ))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("invalid_credentials"));
+    }
+
+    @Test
+    @Order(12)
+    @DisplayName("Direct session enforces the selected project's auth policy")
+    void createSessionRejectsDisabledMethod() throws Exception {
+        ensureIsolatedProject();
+        mockMvc.perform(post("/api/v1/sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "identifier", "demo@arkil.local",
+                                "magicLinkToken", "untrusted-token",
+                                "clientId", "proj_auth-flow-isolation"
+                        ))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("auth_method_disabled"));
     }
 
     @Test
@@ -445,6 +564,27 @@ class AuthFlowIntegrationTests {
                         .build());
         credential.setPasswordHash(passwordEncoder.encode(TEST_PASSWORD));
         passwordCredentialRepository.save(credential);
+    }
+
+    private void ensureIsolatedProject() {
+        Tenant tenant = tenantRepository.findBySlug("auth-flow-isolation")
+                .orElseGet(() -> tenantRepository.save(Tenant.builder()
+                        .slug("auth-flow-isolation")
+                        .name("Auth Flow Isolation")
+                        .enabled(true)
+                        .build()));
+        projectRepository.findBySlug("auth-flow-isolation")
+                .orElseGet(() -> {
+                    Project project = projectRepository.save(Project.builder()
+                            .name("Auth Flow Isolation")
+                            .slug("auth-flow-isolation")
+                            .tenantId(tenant.getId())
+                            .ownerId(UUID.randomUUID())
+                            .active(true)
+                            .build());
+                    project.setRegisteredClientId(registeredClientBridgeService.createRegisteredClientForProject(project));
+                    return projectRepository.save(project);
+                });
     }
 
     private String enableTotpForTestUser() {
